@@ -145,6 +145,8 @@ table.data tbody tr:hover td{background:#faf7f2}
 #lightbox img{max-width:92%;max-height:92%;border-radius:12px;box-shadow:0 12px 50px rgba(0,0,0,.5)}
 #loginOverlay{position:fixed;top:58px;right:16px;z-index:400;display:none}
 #cloudChip.warn{background:var(--amber,#d97706)}
+#loginOverlay.gate{top:0;right:0;left:0;bottom:0;width:100%;height:100%;background:rgba(20,20,20,.55);display:flex;align-items:center;justify-content:center}
+#loginOverlay.gate .closeLogin{display:none}
 .loginbox{position:relative;background:#fff;border-radius:16px;padding:24px 22px;width:330px;max-width:calc(100vw - 32px);text-align:center;box-shadow:0 16px 46px rgba(35,48,58,.3);border:1px solid var(--line)}
 .loginbox h2{margin:8px 0 2px;font-size:18px;color:var(--coffee-d)}
 .loginbox input{width:100%;margin-top:10px;font-size:14.5px;padding:11px 13px}
@@ -623,9 +625,10 @@ table.data tbody tr:hover td{background:#faf7f2}
   <div class="loginbox">
     <button type="button" class="closeLogin" id="closeLoginBtn" aria-label="Đóng">✕</button>
     <div style="font-size:36px">☕</div>
-    <h2>Chọn người đánh giá</h2>
-    <div class="muted" style="margin-bottom:6px">Chọn tên để tự điền "Người đánh giá" và dùng các chức năng nhập liệu. Không cần mật khẩu.</div>
+    <h2>Đăng nhập chấm điểm GMP</h2>
+    <div class="muted" style="margin-bottom:6px">Chọn tên và nhập đúng Mã NV (do Admin cấp) để vào app.</div>
     <select id="loginUserSelect" style="width:100%;margin-top:10px;font-size:14.5px;padding:11px 13px"></select>
+    <input id="loginUserCode" type="password" placeholder="Mã NV" autocomplete="off" style="width:100%;margin-top:10px;font-size:14.5px;padding:11px 13px">
     <button class="btn big" id="loginUserBtn" style="width:100%;margin-top:10px">Xác nhận</button>
     <div id="loginErr" style="color:var(--red);font-weight:700;margin-top:10px;min-height:18px"></div>
     <hr style="margin:16px 0;border:none;border-top:1px solid var(--line)">
@@ -1728,24 +1731,42 @@ function switchTab(name){
 }
 function renderAll(){renderStats();renderQA();renderCAPA();renderApprove();}
 
-/* ===== NGƯỜI DÙNG: chọn tên (không mật khẩu) hoặc đăng nhập Admin (Supabase Auth) ===== */
+/* ===== NGƯỜI DÙNG: chọn tên + Mã NV (rào cản bắt buộc) hoặc đăng nhập Admin (Supabase Auth) ===== */
 let CURRENT_USER=null;
 let MEMBER=null; // chỉ khác null khi đã đăng nhập Admin thật (email/mật khẩu)
+let AUDITOR_NAMES=[]; // chỉ TÊN, không có Mã NV — lấy qua gmp_list_auditor_names(), không lộ Mã NV ra client
 function renderAuditorSelect(){
   const sel=$("#loginUserSelect");if(!sel)return;
   let last=null;try{last=localStorage.getItem("gmp_last_auditor");}catch(e){}
-  sel.innerHTML='<option value="">— Chọn người đánh giá —</option>'+(AUDITORS||[]).map(a=>
-    `<option value="${esc(a.name)}" ${a.name===last?"selected":""}>${esc(a.name)}${a.employee_code?(" ("+esc(a.employee_code)+")"):""}</option>`
+  sel.innerHTML='<option value="">— Chọn người đánh giá —</option>'+(AUDITOR_NAMES||[]).map(n=>
+    `<option value="${esc(n)}" ${n===last?"selected":""}>${esc(n)}</option>`
   ).join("");
 }
-function doPickAuditor(){
+async function loadAuditorNames(){
+  try{
+    const {data,error}=await SB.rpc("gmp_list_auditor_names");
+    if(error)throw error;
+    AUDITOR_NAMES=Array.isArray(data)?data:[];
+  }catch(e){AUDITOR_NAMES=[];}
+  renderAuditorSelect();
+}
+async function doPickAuditor(){
+  if(!sbConfigured()||!SESSION_READY){$("#loginErr").textContent="Chưa kết nối được máy chủ — thử lại sau.";return;}
   const sel=$("#loginUserSelect");const name=sel&&sel.value;
+  const code=($("#loginUserCode").value||"").trim();
   if(!name){$("#loginErr").textContent="Chọn một người đánh giá.";return;}
-  const a=(AUDITORS||[]).find(x=>x.name===name)||{name};
-  CURRENT_USER={name:a.name,code:a.employee_code||"",admin:false};
-  try{localStorage.setItem("gmp_last_auditor",a.name);}catch(e){}
-  $("#loginErr").textContent="";closeLoginBox();applyUserUI();
-  toast("Xin chào "+a.name+"!");
+  if(!code){$("#loginErr").textContent="Nhập Mã NV.";return;}
+  $("#loginErr").textContent="Đang kiểm tra…";
+  try{
+    const {data:ok,error}=await SB.rpc("gmp_verify_auditor_code",{p_name:name,p_code:code});
+    if(error)throw error;
+    if(!ok){$("#loginErr").textContent="Mã NV không đúng.";return;}
+    CURRENT_USER={name,code,admin:false};
+    try{localStorage.setItem("gmp_last_auditor",name);}catch(e){}
+    $("#loginErr").textContent="";$("#loginUserCode").value="";
+    setGate(false);closeLoginBox();applyUserUI();
+    toast("Xin chào "+name+"!");
+  }catch(e){$("#loginErr").textContent="Lỗi kiểm tra: "+(e.message||e);}
 }
 function doLogin(){
   if(!sbConfigured()){$("#loginErr").textContent="Chưa cấu hình Supabase — xem config.js.";return;}
@@ -1764,13 +1785,13 @@ async function afterSignIn(session){
   if(error||!member||member.disabled){
     await SB.auth.signOut().catch(()=>{});
     $("#loginErr").textContent=(member&&member.disabled)?"Tài khoản đã bị vô hiệu hoá — liên hệ Admin.":"Tài khoản chưa được Admin cấp quyền truy cập.";
-    await ensureSession();await pullAll(true);startPoller();
+    await ensureSession();await loadAuditorNames();await pullAll(true);startPoller();
     return;
   }
   MEMBER=member;
   CURRENT_USER={name:member.display_name,code:member.employee_code||"",admin:member.role==="admin"};
   $("#loginErr").textContent="";$("#loginPass").value="";
-  closeLoginBox();applyUserUI();
+  setGate(false);closeLoginBox();applyUserUI();
   toast((CURRENT_USER.admin?"Admin — ":"")+"Xin chào "+CURRENT_USER.name+"!");
   await pullAll(true);startPoller();renderAll();if($("#inArea")&&$("#inArea").value)loadAreaForm($("#inArea").value);
 }
@@ -1779,14 +1800,16 @@ async function doLogout(){
   if(wasAdmin&&sbConfigured()){await SB.auth.signOut().catch(()=>{});clearInterval(pollTimer);}
   MEMBER=null;CURRENT_USER=null;
   const ia=$("#inAuditor");if(ia){ia.value="";ia.readOnly=false;}const qa=$("#qkAuditor");if(qa){qa.value="";qa.readOnly=false;}
-  applyUserUI();$("#loginUser").value="";$("#loginPass").value="";
+  applyUserUI();$("#loginUser").value="";$("#loginPass").value="";$("#loginUserCode").value="";
+  setGate(true);
   toast("Đã đăng xuất");
-  if(wasAdmin)await ensureSession(); // khôi phục phiên ẩn danh để tiếp tục đọc/ghi ở tầng User
+  if(wasAdmin){await ensureSession();await loadAuditorNames();}
 }
 function isLoginBoxOpen(){const ov=$("#loginOverlay");return !!ov&&ov.style.display==="flex";}
 function openLoginBox(){const ov=$("#loginOverlay");if(!ov)return;renderAuditorSelect();ov.style.display="flex";const sel=$("#loginUserSelect");if(sel)sel.focus();}
-function closeLoginBox(){const ov=$("#loginOverlay");if(ov)ov.style.display="none";}
+function closeLoginBox(){const ov=$("#loginOverlay");if(ov&&!ov.classList.contains("gate"))ov.style.display="none";}
 function toggleLoginBox(){isLoginBoxOpen()?closeLoginBox():openLoginBox();}
+function setGate(on){const ov=$("#loginOverlay");if(!ov)return;ov.classList.toggle("gate",on);ov.style.display=on?"flex":"none";if(on)renderAuditorSelect();}
 function applyUserUI(){
   const admin=!!(CURRENT_USER&&CURRENT_USER.admin);
   const chip=$("#userChip");if(chip)chip.style.display=CURRENT_USER?"flex":"none";
@@ -1820,21 +1843,28 @@ async function ensureSession(){
     return session;
   }catch(e){
     SESSION_READY=false;
-    const st=$("#syncStatus");if(st)st.textContent="⚠️ Không kết nối được Supabase: "+(e.message||e)+" (kiểm tra đã bật Anonymous Sign-ins chưa)";
+    const msg="⚠️ Không kết nối được Supabase: "+(e.message||e)+" (kiểm tra đã bật Anonymous Sign-ins chưa)";
+    const st=$("#syncStatus");if(st)st.textContent=msg;
+    const le=$("#loginErr");if(le)le.textContent=msg; // hiện ngay trên màn hình rào cản, vì #syncStatus bị che
     return null;
   }
 }
 async function initCloud(){
-  if(!sbConfigured()){updateCloudChip();return;}
+  if(!sbConfigured()){
+    $("#loginErr").textContent="Chưa cấu hình Supabase — xem config.js.";
+    updateCloudChip();return;
+  }
   const session=await ensureSession();
-  if(!session)return;
+  if(!session)return; // ensureSession() đã ghi lỗi kết nối; giữ nguyên rào cản
   if(session.user&&session.user.is_anonymous===false){
     await afterSignIn(session); // khôi phục phiên Admin đã đăng nhập trước đó (còn hiệu lực sau khi tải lại trang)
   }else{
-    await pullAll(true);startPoller();
+    await loadAuditorNames();
+    $("#loginErr").textContent="";
   }
+  await pullAll(true);startPoller();
   SB.auth.onAuthStateChange((event)=>{
-    if(event==="SIGNED_OUT"){MEMBER=null;if(CURRENT_USER&&CURRENT_USER.admin)CURRENT_USER=null;applyUserUI();}
+    if(event==="SIGNED_OUT"){MEMBER=null;if(CURRENT_USER&&CURRENT_USER.admin){CURRENT_USER=null;setGate(true);}applyUserUI();}
   });
 }
 function edgeUrl(){return (window.GMP_SUPABASE_CONFIG.url||"").replace(/\/$/,"")+"/functions/v1/admin-users";}
@@ -1916,7 +1946,7 @@ async function pullAll(silent){
     if(rk.data&&rk.data.data&&!pendKeys.has(pendKey("checklist","current"))){CHK=rk.data.data;sortCHK();try{localStorage.setItem(LS_CHK,JSON.stringify(CHK));}catch(e){}fillAreaSelects();}
     if(rt.data&&rt.data.data&&!pendKeys.has(pendKey("settings","current"))){SET=Object.assign(defSettings(),rt.data.data);try{localStorage.setItem(LS_SET,JSON.stringify(SET));}catch(e){}applyTabOrder();}
     if(rc.data&&!pendKeys.has(pendKey("capa","current"))){CAPA=rc.data.data||{};try{localStorage.setItem(LS_CAPA,JSON.stringify(CAPA));}catch(e){}}
-    if(ra.data&&!pendKeys.has(pendKey("auditors","current"))){AUDITORS=ra.data.data||[];try{localStorage.setItem(LS_AUD,JSON.stringify(AUDITORS));}catch(e){}renderAuditorSelect();renderAuditorsAdmin();}
+    if(ra.data&&!pendKeys.has(pendKey("auditors","current"))){AUDITORS=ra.data.data||[];try{localStorage.setItem(LS_AUD,JSON.stringify(AUDITORS));}catch(e){}renderAuditorsAdmin();}
     renderAll();if($("#inArea")&&$("#inArea").value)loadAreaForm($("#inArea").value);
     if(!silent)toast("🔄 Đã đồng bộ với máy chủ");
   }catch(e){if(!silent)toast("Lỗi đồng bộ: "+(e.message||e));}
@@ -2193,7 +2223,9 @@ async function boot(){
   restoreMediaDir();
   $("#hisPeriod").onchange=()=>renderHistoryDetail($("#hisPeriod").value);
   $("#loginUserBtn").onclick=doPickAuditor;
-  $("#loginUserSelect").addEventListener("keydown",e=>{if(e.key==="Enter")doPickAuditor();});
+  $("#loginUserSelect").addEventListener("change",()=>{const c=$("#loginUserCode");if(c)c.focus();});
+  $("#loginUserSelect").addEventListener("keydown",e=>{if(e.key==="Enter"){const c=$("#loginUserCode");if(c)c.focus();}});
+  $("#loginUserCode").addEventListener("keydown",e=>{if(e.key==="Enter")doPickAuditor();});
   $("#toggleAdminLoginLink").onclick=e=>{e.preventDefault();const b=$("#adminLoginBox");if(!b)return;const show=b.style.display==="none";b.style.display=show?"block":"none";if(show)$("#loginUser").focus();};
   $("#loginBtn").onclick=doLogin;
   $("#loginUser").addEventListener("keydown",e=>{if(e.key==="Enter")$("#loginPass").focus();});
@@ -2218,8 +2250,9 @@ async function boot(){
   $("#expStatsPngBtn").onclick=exportChartPng;
   $("#lightbox").onclick=()=>{$("#lightbox").style.display="none";};
   applyUserUI();
-  openLoginBox(); // hiện popover chọn người dùng ngay khi mở app, trước khi thao tác gì khác
-  await initCloud(); // nếu khôi phục được phiên Admin đã đăng nhập trước đó, afterSignIn() sẽ tự đóng popover này lại
+  setGate(true); // rào cản bắt buộc: phải chọn tên+Mã NV hoặc đăng nhập Admin mới vào được app
+  $("#loginErr").textContent="Đang kết nối máy chủ…";
+  await initCloud(); // nếu khôi phục được phiên Admin đã đăng nhập trước đó, afterSignIn() sẽ tự mở khoá
 }
 boot();
 </script>
