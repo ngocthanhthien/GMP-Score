@@ -396,6 +396,10 @@ table.data tbody tr:hover td{background:#faf7f2}
       <div class="hint">Danh sách hiện ở màn hình chọn người dùng khi mở app — ai cũng chọn được, không cần email/mật khẩu. Dùng cho nhân viên chấm điểm thông thường.</div>
       <div class="row" style="margin-bottom:12px">
         <button class="btn sm" id="addAuditorBtn">➕ Thêm người</button>
+        <button class="btn sm gray" id="expAuditorsBtn">⬇️ Xuất Excel</button>
+        <button class="btn sm gray" id="expAuditorsTplBtn">📄 Tải template Excel</button>
+        <button class="btn sm gray" id="impAuditorsBtn">⬆️ Nhập từ Excel</button>
+        <input type="file" id="importAuditorsInput" accept=".xlsx" style="display:none">
       </div>
       <div style="overflow-x:auto"><table class="data" id="auditorsTable"></table></div>
     </div>
@@ -1627,6 +1631,48 @@ function renderAuditorsAdmin(){
   $$('#auditorsTable input[data-ak]').forEach(el=>el.onchange=()=>{const i=+el.dataset.ai,k=el.dataset.ak;AUDITORS[i][k]=el.value;saveAuditors();renderAuditorSelect();});
   $$('#auditorsTable [data-adel]').forEach(b=>b.onclick=()=>{if(!confirm("Xoá người này khỏi danh sách?"))return;AUDITORS.splice(+b.dataset.adel,1);saveAuditors();renderAuditorsAdmin();renderAuditorSelect();});
 }
+function auditorsXlsxName(){return "DanhSachNguoiDanhGia_"+todayISO()+".xlsx";}
+async function buildAuditorsWorkbookBlob(rows){
+  if(typeof ExcelJS==="undefined")throw new Error("Thư viện Excel chưa tải");
+  const wb=new ExcelJS.Workbook();wb.creator="GMP Audit App";wb.created=new Date();
+  const s=wb.addWorksheet("DanhSach");
+  hdrStyle(s.addRow(["Tên","Mã NV"]));
+  s.columns=[{width:30},{width:16}];
+  rows.forEach(a=>s.addRow([a.name||"",a.employee_code||""]));
+  s.views=[{state:"frozen",ySplit:1}];
+  const buf=await wb.xlsx.writeBuffer();
+  return new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+async function exportAuditorsXlsx(){
+  try{toast("Đang tạo file Excel…");const blob=await buildAuditorsWorkbookBlob(AUDITORS||[]);
+    await saveOut(blob,auditorsXlsxName());toast("Đã xuất "+((AUDITORS||[]).length)+" người ✓");}
+  catch(e){toast("Lỗi xuất Excel: "+e.message);}
+}
+async function exportAuditorsTemplate(){
+  try{const blob=await buildAuditorsWorkbookBlob([{name:"Nguyễn Văn A",employee_code:"ILD0001"}]);
+    await saveOut(blob,"Template_DanhSachNguoiDanhGia.xlsx");toast("Đã tải template — sửa/xoá dòng mẫu rồi Nhập lại");}
+  catch(e){toast("Lỗi tạo template: "+e.message);}
+}
+async function importAuditorsXlsx(file){
+  try{
+    if(typeof ExcelJS==="undefined")throw new Error("Thư viện Excel chưa tải");
+    toast("Đang đọc file Excel…");
+    const buf=await file.arrayBuffer();const wb=new ExcelJS.Workbook();await wb.xlsx.load(buf);
+    const ws=wb.worksheets[0];if(!ws)throw new Error("File rỗng");
+    const idx={};ws.getRow(1).eachCell((c,n)=>{idx[cellStr(c.value).trim()]=n;});
+    if(!idx["Tên"])throw new Error("File \""+file.name+"\" không đúng template (thiếu cột Tên)");
+    const g=(row,name)=>{const c=idx[name];return c?cellStr(row.getCell(c).value).trim():"";};
+    let added=0,updated=0;
+    ws.eachRow((row,rn)=>{if(rn===1)return;const name=g(row,"Tên");if(!name)return;
+      const code=g(row,"Mã NV");
+      const ex=AUDITORS.find(a=>a.name.toLowerCase()===name.toLowerCase());
+      if(ex){if(code)ex.employee_code=code;updated++;}
+      else{AUDITORS.push({name,employee_code:code});added++;}
+    });
+    saveAuditors();renderAuditorsAdmin();renderAuditorSelect();
+    toast("Đã nhập: +"+added+" người mới, cập nhật "+updated+" người có sẵn ✓");
+  }catch(e){toast("Lỗi nhập Excel: "+e.message);}
+}
 function renderSettings(){
   $("#setCompany").value=SET.company||"";$("#setAuditor").value=SET.defaultAuditor||"";
   $("#setRecipients").value=SET.recipients||"";$("#setRecipientName").value=SET.recipientName||"";
@@ -2160,6 +2206,10 @@ async function boot(){
   $("#addUserBtn").onclick=addUserPrompt;
   $("#reloadUsersBtn").onclick=renderUsers;
   $("#addAuditorBtn").onclick=()=>{AUDITORS.push({name:"(Tên mới)",employee_code:""});saveAuditors();renderAuditorsAdmin();renderAuditorSelect();};
+  $("#expAuditorsBtn").onclick=exportAuditorsXlsx;
+  $("#expAuditorsTplBtn").onclick=exportAuditorsTemplate;
+  $("#impAuditorsBtn").onclick=()=>$("#importAuditorsInput").click();
+  $("#importAuditorsInput").onchange=e=>{const f=e.target.files[0];if(f)importAuditorsXlsx(f);e.target.value="";};
   applyTabOrder();
   $("#resetTabOrderBtn").onclick=()=>{SET.tabOrder=null;saveSettings();applyTabOrder();renderTabOrderSettings();toast("Đã khôi phục thứ tự tab");};
   $("#mailCc").onchange=()=>{SET.ccAdmin=$("#mailCc").value;saveSettings();};
