@@ -2218,7 +2218,8 @@ async function boot(){
   $("#expStatsPngBtn").onclick=exportChartPng;
   $("#lightbox").onclick=()=>{$("#lightbox").style.display="none";};
   applyUserUI();
-  await initCloud();
+  openLoginBox(); // hiện popover chọn người dùng ngay khi mở app, trước khi thao tác gì khác
+  await initCloud(); // nếu khôi phục được phiên Admin đã đăng nhập trước đó, afterSignIn() sẽ tự đóng popover này lại
 }
 boot();
 </script>
