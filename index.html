@@ -326,12 +326,13 @@ table.data tbody tr:hover td{background:#faf7f2}
   <div class="view" id="view-edit">
     <div class="card">
       <h2>Chỉnh sửa nội dung checklist</h2>
-      <div class="hint">Sửa/thêm/xoá câu hỏi cho từng khu vực. Thay đổi được lưu trong trình duyệt và áp dụng cho các lượt chấm sau.</div>
+      <div class="hint">Sửa/thêm/xoá/sắp xếp câu hỏi cho từng khu vực. Thay đổi chỉ ở dạng nháp — bấm <b>💾 Lưu thay đổi</b> để cập nhật vào checklist thật (áp dụng cho các lượt chấm sau).</div>
       <div class="row">
         <div class="field" style="min-width:240px"><label>Khu vực</label><select id="editArea"></select></div>
         <button class="btn sm" id="addItemBtn">＋ Thêm câu hỏi</button>
         <button class="btn sm gray" id="addAreaBtn">＋ Thêm khu vực</button>
         <button class="btn sm amber" id="resetChkBtn">↺ Khôi phục mặc định</button>
+        <button class="btn big" id="saveChkBtn" disabled>💾 Lưu thay đổi</button>
       </div>
       <div style="overflow-x:auto;margin-top:12px"><table class="data" id="editTable"></table></div>
     </div>
@@ -340,13 +341,13 @@ table.data tbody tr:hover td{background:#faf7f2}
   <div class="view" id="view-sync">
     <div class="card">
       <h2>🔄 Đồng bộ Supabase</h2>
-      <div class="hint">Dữ liệu lưu trên máy chủ Supabase — mọi máy đăng nhập cùng project đều thấy chung 1 bản. App tự lưu khoảng 1,5 giây sau khi bạn ngừng nhập, và tự lấy bản mới mỗi 30 giây khi bạn không thao tác. Dùng nút bên dưới khi muốn đồng bộ ngay.</div>
+      <div class="hint">Dữ liệu lưu trên máy chủ Supabase — mọi máy đăng nhập cùng project đều thấy chung 1 bản. App tự lưu khoảng 1,5 giây sau khi bạn ngừng nhập, và tự nhận bản mới từ máy khác gần như ngay lập tức qua realtime (kèm vòng kiểm tra dự phòng mỗi 30 giây phòng khi mất kết nối realtime). Dùng nút bên dưới khi muốn đồng bộ ngay.</div>
     </div>
     <div class="card" style="text-align:center;padding:30px 20px">
       <h3 class="sec" style="justify-content:center;border:none">☁️ Trạng thái đồng bộ</h3>
       <button class="btn big" id="syncNowBtn" style="font-size:17px;padding:16px 38px;margin-top:6px">🔄 ĐỒNG BỘ NGAY</button>
       <div class="muted" id="syncStatus" style="margin-top:12px;font-weight:600">Đang kiểm tra kết nối…</div>
-      <div class="hint" style="text-align:left;color:var(--amber);font-weight:700;margin-top:10px">⚠️ Đây là đồng bộ theo chu kỳ (polling), không phải realtime. Nếu mất mạng giữa chừng, thay đổi được giữ trong hàng đợi trên máy và tự gửi lại khi có mạng — đừng xoá cache trình duyệt khi còn thay đổi chưa gửi.</div>
+      <div class="hint" style="text-align:left;color:var(--amber);font-weight:700;margin-top:10px">⚠️ Máy khác lưu điểm sẽ tự đẩy về gần như ngay lập tức (realtime) khi chip ☁️ hiện "⚡ Realtime". Nếu mất kết nối realtime, app tự chuyển về kiểm tra định kỳ mỗi 30 giây. Nếu mất mạng giữa chừng, thay đổi được giữ trong hàng đợi trên máy và tự gửi lại khi có mạng — đừng xoá cache trình duyệt khi còn thay đổi chưa gửi.</div>
     </div>
     <div class="card">
       <h3 class="sec">📝 Máy mới / thiết bị khác</h3>
@@ -1501,16 +1502,27 @@ async function composeMail(code){
   }catch(e){toast("Lỗi soạn mail: "+e.message);}
 }
 
+let chkDirty=false;
+function updateChkSaveBtn(){const b=$("#saveChkBtn");if(!b)return;b.disabled=!chkDirty;b.textContent=chkDirty?"💾 Lưu thay đổi (chưa lưu)":"💾 Lưu thay đổi";}
+function markChkDirty(){chkDirty=true;updateChkSaveBtn();}
+function saveChkChanges(){saveChk();chkDirty=false;updateChkSaveBtn();fillAreaSelects();toast("💾 Đã lưu thay đổi vào checklist");}
 function renderEdit(){
   const code=$("#editArea").value;const a=areaByCode(code);if(!a){$("#editTable").innerHTML="";return;}
-  const head=`<tr><th style="width:34px">#</th><th style="width:200px">Chủ đề</th><th>Yêu cầu kiểm tra</th><th style="width:60px"></th></tr>`;
+  const head=`<tr><th style="width:34px">#</th><th style="width:200px">Chủ đề</th><th>Yêu cầu kiểm tra</th><th style="width:70px">Thứ tự</th><th style="width:60px"></th></tr>`;
   const rows=a.items.map((it,i)=>`<tr><td class="center">${i+1}</td>
     <td><input data-i="${i}" data-k="cat" value="${esc(it.cat)}" style="width:100%"></td>
     <td><textarea data-i="${i}" data-k="req" style="width:100%">${esc(it.req)}</textarea></td>
+    <td class="center" style="white-space:nowrap">
+      <button class="btn sm gray" data-up="${i}" title="Lên" ${i===0?"disabled":""}>▲</button>
+      <button class="btn sm gray" data-down="${i}" title="Xuống" ${i===a.items.length-1?"disabled":""}>▼</button>
+    </td>
     <td class="center"><button class="btn sm red" data-del="${i}">✕</button></td></tr>`).join("");
   $("#editTable").innerHTML=head+rows;
-  $$('#editTable input[data-k],#editTable textarea[data-k]').forEach(el=>el.onchange=()=>{a.items[+el.dataset.i][el.dataset.k]=el.value;saveChk();});
-  $$('#editTable [data-del]').forEach(b=>b.onclick=()=>{if(!confirm("Xoá câu hỏi này?"))return;a.items.splice(+b.dataset.del,1);saveChk();renderEdit();fillAreaSelects();});
+  $$('#editTable input[data-k],#editTable textarea[data-k]').forEach(el=>el.onchange=()=>{a.items[+el.dataset.i][el.dataset.k]=el.value;markChkDirty();});
+  $$('#editTable [data-del]').forEach(b=>b.onclick=()=>{if(!confirm("Xoá câu hỏi này?"))return;a.items.splice(+b.dataset.del,1);markChkDirty();renderEdit();});
+  $$('#editTable [data-up]').forEach(b=>b.onclick=()=>{const i=+b.dataset.up;if(i<=0)return;const t=a.items[i-1];a.items[i-1]=a.items[i];a.items[i]=t;markChkDirty();renderEdit();});
+  $$('#editTable [data-down]').forEach(b=>b.onclick=()=>{const i=+b.dataset.down;if(i>=a.items.length-1)return;const t=a.items[i+1];a.items[i+1]=a.items[i];a.items[i]=t;markChkDirty();renderEdit();});
+  updateChkSaveBtn();
 }
 
 /* ===== settings ===== */
@@ -1727,7 +1739,7 @@ async function afterSignIn(session){
   if(error||!member||member.disabled){
     await SB.auth.signOut().catch(()=>{});
     $("#loginErr").textContent=(member&&member.disabled)?"Tài khoản đã bị vô hiệu hoá — liên hệ Admin.":"Tài khoản chưa được Admin cấp quyền truy cập.";
-    await ensureSession();await loadAuditorNames();await pullAll(true);startPoller();
+    await ensureSession();await loadAuditorNames();await pullAll(true);startPoller();startRealtime();
     return;
   }
   MEMBER=member;
@@ -1735,17 +1747,17 @@ async function afterSignIn(session){
   $("#loginErr").textContent="";$("#loginPass").value="";
   setGate(false);closeLoginBox();applyUserUI();
   toast((CURRENT_USER.admin?"Admin — ":"")+"Xin chào "+CURRENT_USER.name+"!");
-  await pullAll(true);startPoller();renderAll();if($("#inArea")&&$("#inArea").value)loadAreaForm($("#inArea").value);
+  await pullAll(true);startPoller();startRealtime();renderAll();if($("#inArea")&&$("#inArea").value)loadAreaForm($("#inArea").value);
 }
 async function doLogout(){
   const wasAdmin=!!(CURRENT_USER&&CURRENT_USER.admin);
-  if(wasAdmin&&sbConfigured()){await SB.auth.signOut().catch(()=>{});clearInterval(pollTimer);}
+  if(wasAdmin&&sbConfigured()){stopRealtime();await SB.auth.signOut().catch(()=>{});clearInterval(pollTimer);}
   MEMBER=null;CURRENT_USER=null;
   const ia=$("#inAuditor");if(ia){ia.value="";ia.readOnly=false;}
   applyUserUI();$("#loginUser").value="";$("#loginPass").value="";$("#loginUserCode").value="";
   setGate(true);
   toast("Đã đăng xuất");
-  if(wasAdmin){await ensureSession();await loadAuditorNames();}
+  if(wasAdmin){await ensureSession();await loadAuditorNames();await pullAll(true);startPoller();startRealtime();}
 }
 function isLoginBoxOpen(){const ov=$("#loginOverlay");return !!ov&&ov.style.display==="flex";}
 function openLoginBox(){const ov=$("#loginOverlay");if(!ov)return;renderAuditorSelect();ov.style.display="flex";const sel=$("#loginUserSelect");if(sel)sel.focus();}
@@ -1802,7 +1814,7 @@ async function initCloud(){
     await loadAuditorNames();
     $("#loginErr").textContent="";
   }
-  await pullAll(true);startPoller();
+  await pullAll(true);startPoller();startRealtime();
   SB.auth.onAuthStateChange((event)=>{
     if(event==="SIGNED_OUT"){MEMBER=null;if(CURRENT_USER&&CURRENT_USER.admin){CURRENT_USER=null;setGate(true);}applyUserUI();}
   });
@@ -1829,12 +1841,14 @@ function updateCloudChip(){
   const b=c.querySelector("b");
   if(!navigator.onLine){b.textContent="Mất mạng — giữ bản chờ";c.classList.add("warn");}
   else if(syncBusy){b.textContent="Đang đồng bộ…";c.classList.remove("warn");}
+  else if(realtimeReady){b.textContent="⚡ Realtime";c.classList.remove("warn");}
   else{b.textContent="Đã đồng bộ";c.classList.remove("warn");}
   const st=$("#syncStatus");if(!st)return;
   pendAll().then(items=>{
     if(!navigator.onLine)st.textContent="⚠️ Mất mạng — "+items.length+" thay đổi đang chờ, sẽ tự gửi khi có mạng lại.";
     else if(items.length)st.textContent="🔄 Đang gửi "+items.length+" thay đổi…";
-    else st.textContent="✅ Đã đồng bộ với máy chủ lúc "+new Date().toLocaleTimeString("vi-VN");
+    else if(realtimeReady)st.textContent="⚡ Đồng bộ realtime — dữ liệu cập nhật gần như ngay lập tức, không cần chờ.";
+    else st.textContent="✅ Đã đồng bộ với máy chủ lúc "+new Date().toLocaleTimeString("vi-VN")+" (đang dùng vòng kiểm tra 30 giây — chưa kết nối được realtime)";
   });
 }
 async function flushPending(){
@@ -1896,6 +1910,30 @@ async function pullAll(silent){
 function startPoller(){clearInterval(pollTimer);pollTimer=setInterval(()=>{if(!dirtyEval&&!syncBusy&&navigator.onLine)pullAll(true).catch(()=>{});},30000);}
 async function doSync(silent){await flushPending();await pullAll(silent);}
 function maybeAutoPush(){scheduleFlush();}
+
+/* ===== Realtime: đẩy dữ liệu về gần như ngay lập tức thay vì chờ vòng polling 30s ===== */
+let realtimeChannel=null,realtimeReady=false,realtimePullTimer=null;
+const REALTIME_TABLES=["gmp_records","gmp_submissions","gmp_periods","gmp_capa","gmp_checklist","gmp_settings","gmp_auditors"];
+function scheduleRealtimePull(){
+  clearTimeout(realtimePullTimer);
+  // gộp nhiều sự kiện đến gần nhau (VD: lưu 1 Function ra 20-30 dòng) thành 1 lượt kéo
+  realtimePullTimer=setTimeout(()=>{if(!dirtyEval&&!syncBusy)pullAll(true).catch(()=>{});},400);
+}
+function startRealtime(){
+  if(!sbConfigured()||!SESSION_READY||realtimeChannel)return;
+  realtimeChannel=SB.channel("gmp-live");
+  REALTIME_TABLES.forEach(t=>{
+    realtimeChannel.on("postgres_changes",{event:"*",schema:"public",table:t},scheduleRealtimePull);
+  });
+  realtimeChannel.subscribe(status=>{
+    realtimeReady=(status==="SUBSCRIBED");
+    updateCloudChip();
+  });
+}
+function stopRealtime(){
+  if(realtimeChannel){try{SB.removeChannel(realtimeChannel);}catch(e){}realtimeChannel=null;}
+  realtimeReady=false;clearTimeout(realtimePullTimer);
+}
 window.addEventListener("online",()=>{updateCloudChip();flushPending();});
 window.addEventListener("offline",updateCloudChip);
 function installSyncWraps(){
@@ -2206,10 +2244,11 @@ async function boot(){
   $$(".tab").forEach(t=>t.onclick=()=>switchTab(t.dataset.tab));
   $("#inArea").onchange=e=>{loadAreaForm(e.target.value);updateLive();};
   $("#editArea").onchange=renderEdit;
-  $("#addItemBtn").onclick=()=>{const a=areaByCode($("#editArea").value);if(!a)return;a.items.push({cat:"(Chủ đề mới)",req:"(Yêu cầu mới)"});saveChk();renderEdit();fillAreaSelects();};
+  $("#addItemBtn").onclick=()=>{const a=areaByCode($("#editArea").value);if(!a)return;a.items.push({cat:"(Chủ đề mới)",req:"(Yêu cầu mới)"});markChkDirty();renderEdit();};
   $("#addAreaBtn").onclick=()=>{const code=prompt("Mã khu vực mới (VD: NEW):");if(!code)return;const full=prompt("Tên đầy đủ khu vực:")||code;
-    CHK.push({code,full,items:[{cat:"(Chủ đề mới)",req:"(Yêu cầu mới)"}]});saveChk();fillAreaSelects();$("#editArea").value=code;renderEdit();};
-  $("#resetChkBtn").onclick=()=>{if(!confirm("Khôi phục checklist về mặc định June.2026? (Không xoá dữ liệu đã chấm)"))return;CHK=seedChk();sortCHK();saveChk();fillAreaSelects();renderEdit();toast("Đã khôi phục checklist mặc định");};
+    CHK.push({code,full,items:[{cat:"(Chủ đề mới)",req:"(Yêu cầu mới)"}]});fillAreaSelects();$("#editArea").value=code;markChkDirty();renderEdit();};
+  $("#resetChkBtn").onclick=()=>{if(!confirm("Khôi phục checklist về mặc định June.2026? (Không xoá dữ liệu đã chấm)"))return;CHK=seedChk();sortCHK();saveChk();chkDirty=false;fillAreaSelects();renderEdit();toast("Đã khôi phục checklist mặc định");};
+  $("#saveChkBtn").onclick=saveChkChanges;
   $("#expAreaBtn").onclick=()=>{const c=$("#inArea").value;if(!c){toast("Hãy chọn khu vực");return;}exportExcel(c);};
   $("#impAreaBtn").onclick=()=>{const c=$("#inArea").value;if(!c){toast("Hãy chọn khu vực trước");return;}$("#importXlsxInput").click();};
   $("#mailAreaBtn").onclick=()=>{const c=$("#inArea").value;if(!c){toast("Hãy chọn khu vực");return;}composeMail(c);};
@@ -2227,7 +2266,7 @@ async function boot(){
   $("#expCapaCsvBtn").onclick=exportCapaCsv;$("#expCapaXlsxBtn").onclick=exportCapaXlsx;
   document.addEventListener("keydown",onKey);
   document.addEventListener("paste",onPaste);
-  window.addEventListener("beforeunload",e=>{if(dirtyEval){e.preventDefault();e.returnValue="";}});
+  window.addEventListener("beforeunload",e=>{if(dirtyEval||chkDirty){e.preventDefault();e.returnValue="";}});
   const pb=$("#printBtn");if(pb)pb.onclick=()=>window.print();
   $("#syncNowBtn").onclick=()=>doSync(false);
   restoreMediaDir();
