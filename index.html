@@ -1898,7 +1898,7 @@ async function pullAll(silent){
     if(rp.data){for(const row of rp.data){if(!pendKeys.has(pendKey("period_create",row.id))&&!pendKeys.has(pendKey("period_lock",row.id)))await perPut(mapServerPeriod(row));}await reloadPeriods();}
     if(rs.data){for(const row of rs.data){if(resetPeriods.has(row.period))continue;if(!pendKeys.has(pendKey("submission",row.id)))await subPut(mapServerSub(row));}await reloadSubs();}
     if(rr.data){for(const row of rr.data){if(resetPeriods.has(row.period))continue;if(!pendKeys.has(pendKey("record",row.id))&&!pendKeys.has(pendKey("record_del",row.id)))await dbPut(mapServerRecord(row));}await reloadRecords();}
-    if(rk.data&&rk.data.data&&!pendKeys.has(pendKey("checklist","current"))){CHK=rk.data.data;sortCHK();try{localStorage.setItem(LS_CHK,JSON.stringify(CHK));}catch(e){}fillAreaSelects();}
+    if(rk.data&&rk.data.data&&!pendKeys.has(pendKey("checklist","current"))&&!chkDirty){CHK=rk.data.data;sortCHK();try{localStorage.setItem(LS_CHK,JSON.stringify(CHK));}catch(e){}fillAreaSelects();}
     if(rt.data&&rt.data.data&&!pendKeys.has(pendKey("settings","current"))){SET=Object.assign(defSettings(),rt.data.data);try{localStorage.setItem(LS_SET,JSON.stringify(SET));}catch(e){}applyTabOrder();}
     if(rc.data&&!pendKeys.has(pendKey("capa","current"))){CAPA=rc.data.data||{};try{localStorage.setItem(LS_CAPA,JSON.stringify(CAPA));}catch(e){}}
     if(ra.data&&!pendKeys.has(pendKey("auditors","current"))){AUDITORS=ra.data.data||[];try{localStorage.setItem(LS_AUD,JSON.stringify(AUDITORS));}catch(e){}renderAuditorsAdmin();}
