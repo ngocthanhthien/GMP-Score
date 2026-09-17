@@ -230,17 +230,16 @@ table.data tbody tr:hover td{background:#faf7f2}
 
 <div class="tabs" id="tabsBar">
   <div class="tab active" data-tab="input">📝 Chấm điểm</div>
-  <div class="tab guestTab" data-tab="quick" style="display:none">⚡ Lỗi nhanh</div>
-  <div class="tab" data-tab="stats">📊 Thống kê</div>
-  <div class="tab guestTab" data-tab="qa" style="display:none">📋 Tổng hợp QA</div>
-  <div class="tab" data-tab="capa">🛠️ CAPA</div>
-  <div class="tab guestTab" data-tab="approve" style="display:none">✅ Phê duyệt</div>
+  <div class="tab adminTab" data-tab="stats" style="display:none">📊 Thống kê</div>
+  <div class="tab adminTab" data-tab="qa" style="display:none">📋 Tổng hợp QA</div>
+  <div class="tab adminTab" data-tab="capa" style="display:none">🛠️ CAPA</div>
+  <div class="tab adminTab" data-tab="approve" style="display:none">✅ Phê duyệt</div>
   <div class="tab adminTab" data-tab="edit" style="display:none">✏️ Chỉnh sửa</div>
-  <div class="tab" data-tab="sync">🔄 Đồng bộ</div>
+  <div class="tab adminTab" data-tab="sync" style="display:none">🔄 Đồng bộ</div>
   <div class="tab adminTab" data-tab="settings" style="display:none">🔧 Cài đặt</div>
   <div class="tab adminTab" data-tab="mail" style="display:none">✉️ Mail</div>
   <div class="tab adminTab" data-tab="users" style="display:none">👥 Tài khoản</div>
-  <div class="tab" data-tab="history">🕘 Lịch sử</div>
+  <div class="tab adminTab" data-tab="history" style="display:none">🕘 Lịch sử</div>
   <div class="tab" data-tab="guide">📖 Hướng dẫn</div>
 </div>
 
@@ -266,39 +265,6 @@ table.data tbody tr:hover td{background:#faf7f2}
     <div id="checklistHost"></div>
   </div>
 
-  <div class="view" id="view-quick">
-    <div class="card">
-      <h2>⚡ Ghi nhận lỗi nhanh</h2>
-      <div class="hint">Ghi nhanh các lỗi phát hiện mà không cần chấm cả checklist. Khi <b>Lưu</b>, các mục không ghi lỗi sẽ mặc định <b>Đạt (2đ)</b> và tạo một lượt đánh giá đầy đủ cho khu vực.</div>
-      <div class="row">
-        <div class="field"><label>Ngày</label><input type="date" id="qkDate"></div>
-        <div class="field" style="flex:1;min-width:200px"><label>Người đánh giá</label><input type="text" id="qkAuditor" placeholder="Tên người ghi nhận"></div>
-        <div class="field" style="min-width:220px"><label>Khu vực / Function</label><select id="qkArea"></select></div>
-      </div>
-    </div>
-    <div class="card" id="qkFormCard" style="display:none">
-      <h3 class="sec">➕ Thêm một lỗi</h3>
-      <div class="row">
-        <div class="field" style="min-width:200px"><label>Chủ đề</label><select id="qkCat"></select></div>
-        <div class="field" style="flex:1;min-width:260px"><label>Yêu cầu (mục bị lỗi)</label><select id="qkReq"></select></div>
-        <div class="field" style="min-width:170px"><label>Mức độ</label>
-          <select id="qkScore"><option value="0">0 — Chưa tuân thủ</option><option value="1">1 — Cần cải thiện</option></select></div>
-      </div>
-      <div class="field" style="margin-top:10px"><label>Phát hiện (mô tả lỗi)</label><textarea id="qkFinding" placeholder="Mô tả lỗi phát hiện..."></textarea></div>
-      <div class="row" style="margin-top:10px">
-        <div class="field" style="flex:1;min-width:200px"><label>Bằng chứng</label><input type="text" id="qkEv" placeholder="VD: vị trí, tài liệu..."></div>
-        <div class="field"><label>Hình ảnh</label>
-          <label class="imgbtn" style="margin-top:0">📎 Đính/Dán ảnh<input type="file" id="qkImgInput" accept="image/*" multiple style="display:none"></label></div>
-      </div>
-      <div class="imgwrap" id="qkImgWrap" style="margin-top:8px"></div>
-      <div style="margin-top:12px"><button class="btn" id="qkAddBtn">➕ Thêm lỗi vào danh sách</button></div>
-    </div>
-    <div class="card" id="qkListCard" style="display:none">
-      <h3 class="sec">Danh sách lỗi đã ghi — khu vực <span id="qkAreaName"></span> (<span id="qkCount">0</span>)</h3>
-      <div style="overflow-x:auto"><table class="data" id="qkTable"></table></div>
-      <div style="margin-top:12px"><button class="btn big" id="qkSaveBtn">💾 Lưu đánh giá (các mục khác mặc định Đạt 2đ)</button></div>
-    </div>
-  </div>
 
   <div class="view" id="view-stats">
     <div class="card">
@@ -426,9 +392,15 @@ table.data tbody tr:hover td{background:#faf7f2}
         <button class="btn" id="lockPeriodBtn">🔒 Chốt toàn bộ kỳ</button>
         <button class="btn gray" id="createPeriodBtn">➕ Tạo kỳ mới</button>
         <button class="btn red" id="resetPeriodBtn">♻️ Reset kỳ đang chấm</button>
-        <div class="hint" style="margin:0;flex:1;min-width:220px">"Chốt toàn bộ kỳ" cần mọi Function đã <b>Gửi kết quả</b>. "Tạo kỳ mới" chỉ bật khi kỳ hiện tại đã chốt — không xoá/copy dữ liệu. "Reset kỳ đang chấm" chỉ xoá dữ liệu của kỳ đang mở, các kỳ đã chốt không bị ảnh hưởng.</div>
+        <button class="btn gray" id="purgeCandidatesBtn">🗑️ Dọn dữ liệu chấm cá nhân</button>
+        <div class="hint" style="margin:0;flex:1;min-width:220px">"Chốt toàn bộ kỳ" cần mọi Function đã <b>Gửi kết quả</b>. "Tạo kỳ mới" chỉ bật khi kỳ hiện tại đã chốt — không xoá/copy dữ liệu. "Reset kỳ đang chấm" chỉ xoá dữ liệu của kỳ đang mở, các kỳ đã chốt không bị ảnh hưởng. "Dọn dữ liệu chấm cá nhân" xoá các bài chấm riêng lẻ của từng Auditor thuộc khu vực <b>đã Chốt</b> để tiết kiệm dung lượng — không đụng tới bản chính thức.</div>
       </div>
       <div style="overflow-x:auto"><table class="data" id="apTable"></table></div>
+    </div>
+    <div class="card" id="apCandidatesCard" style="display:none">
+      <h2>📝 Bài chấm đang chờ duyệt</h2>
+      <div class="hint">Khi nhiều Auditor cùng chấm 1 khu vực, tất cả các bài đều hiện ở đây. Xem từng bài rồi chọn 1 bài làm kết quả chính thức trước khi Chốt. Mỗi Auditor chỉ thấy bài của chính mình ở tab Chấm điểm — không thấy bài người khác.</div>
+      <div id="apCandidates"></div>
     </div>
   </div>
 
@@ -785,12 +757,21 @@ async function seedIfEmpty(){
     await new Promise(r=>setTimeout(r,250));await reloadRecords();
   }else{await reloadRecords();}
 }
-function recordsForPeriodArea(period,code){const recs=RECORDS.filter(r=>r.code===code&&(r.period||inferPeriod(r.date))===period);if(!recs.length)return [];
-  let best=null;recs.forEach(r=>{if(best===null||r.batch>best)best=r.batch;});return recs.filter(r=>r.batch===best);}
+function recordsForPeriodArea(period,code){
+  // Chỉ xét các dòng KHÔNG thuộc bài chấm cá nhân (submitterKey) — bài cá nhân
+  // không bao giờ được coi là "bản chính thức", kể cả khi batch của nó lớn hơn
+  // theo thứ tự chuỗi (tránh vô tình "thắng" bản chính thức qua so sánh chuỗi).
+  const recs=RECORDS.filter(r=>r.code===code&&(r.period||inferPeriod(r.date))===period&&!r.submitterKey);
+  if(!recs.length)return [];
+  let best=null;recs.forEach(r=>{if(best===null||r.batch>best)best=r.batch;});return recs.filter(r=>r.batch===best);
+}
 function latestByArea(code,period){return recordsForPeriodArea(period||activePeriodId(),code);}
-function areaScore(code,period){const recs=latestByArea(code,period);if(!recs.length)return null;
+function recordsForBatch(batch){return RECORDS.filter(r=>r.batch===batch);}
+function scoreForRecords(recs){if(!recs||!recs.length)return null;
   const actual=recs.reduce((s,r)=>s+(r.score||0),0);const poss=recs.length*2;
   return {actual,poss,pct:poss?actual/poss:0,n:recs.length,batch:recs[0].batch,date:recs[0].date};}
+function areaScore(code,period){return scoreForRecords(latestByArea(code,period));}
+function areaScoreForBatch(batch){return scoreForRecords(recordsForBatch(batch));}
 function capCountArea(code){let n=0;latestByArea(code).forEach(r=>{if(r.score!=null&&r.score<2)n++;});return n;}
 function allFindings(period){let f=[];CHK.forEach(a=>latestByArea(a.code,period).forEach(r=>{if(r.score!=null&&r.score<2)f.push(r);}));return f;}
 
@@ -874,63 +855,26 @@ function fillAreaSelects(){
   $("#inArea").innerHTML='<option value="">— Chọn khu vực —</option>'+CHK.map(opt).join("");
   $("#editArea").innerHTML=CHK.map(opt).join("");
   $("#capaArea").innerHTML='<option value="">Tất cả khu vực</option>'+CHK.map(opt).join("");
-  $("#qkArea").innerHTML='<option value="">— Chọn khu vực —</option>'+CHK.map(opt).join("");
 }
 
-/* ===== quick defect log ===== */
-let QK={defects:[],img:[]};
-function qkFillCats(){const a=areaByCode($("#qkArea").value);const cats=a?[...new Set(a.items.map(i=>i.cat||"(Không phân loại)"))]:[];
-  $("#qkCat").innerHTML='<option value="">— Tất cả chủ đề —</option>'+cats.map(c=>`<option>${esc(c)}</option>`).join("");qkFillReqs();}
-function qkFillReqs(){const a=areaByCode($("#qkArea").value);const cat=$("#qkCat").value;
-  const reqs=a?a.items.filter(i=>!cat||(i.cat||"(Không phân loại)")===cat):[];
-  $("#qkReq").innerHTML='<option value="">— Chọn yêu cầu bị lỗi —</option>'+reqs.map(i=>`<option value="${esc(i.req)}">${esc(i.req)}</option>`).join("");}
-function qkAreaChange(){const code=$("#qkArea").value;QK={defects:[],img:[]};
-  $("#qkFormCard").style.display=code?"block":"none";$("#qkListCard").style.display="none";
-  $("#qkAreaName").textContent=code;qkFillCats();refreshQkImg();renderQkList();}
-function refreshQkImg(){const w=$("#qkImgWrap");if(w)w.innerHTML=(QK.img||[]).map((im,j)=>`<span class="thumb"><img src="${im.data}" data-qview="1"><b data-qrm="${j}">✕</b></span>`).join("");}
-function qkAdd(){const a=areaByCode($("#qkArea").value);if(!a){toast("Chọn khu vực");return;}
-  const req=$("#qkReq").value;if(!req){toast("Chọn yêu cầu bị lỗi");return;}
-  let cat=$("#qkCat").value;if(!cat){const it=a.items.find(i=>i.req===req);cat=it?(it.cat||"(Không phân loại)"):"";}
-  const score=parseInt($("#qkScore").value,10);
-  QK.defects.push({cat,req,score,finding:$("#qkFinding").value.trim(),evidence:$("#qkEv").value.trim(),images:(QK.img||[]).slice()});
-  QK.img=[];$("#qkFinding").value="";$("#qkEv").value="";refreshQkImg();renderQkList();toast("Đã thêm lỗi vào danh sách");}
-function renderQkList(){const list=QK.defects;const c=$("#qkCount");if(c)c.textContent=list.length;
-  $("#qkListCard").style.display=list.length?"block":"none";
-  const head=`<tr><th>#</th><th>Chủ đề</th><th>Yêu cầu</th><th class="center">Mức</th><th>Phát hiện</th><th class="center">Ảnh</th><th></th></tr>`;
-  const rows=list.map((d,i)=>`<tr><td class="center">${i+1}</td><td>${esc(d.cat)}</td><td>${esc(d.req)}</td>
-    <td class="center"><span class="tag ${d.score===0?'t0':'t1'}">${d.score}</span></td><td>${esc(d.finding)||'<span class="muted">—</span>'}</td>
-    <td class="center">${(d.images||[]).length?('📷'+(d.images.length>1?d.images.length:'')):''}</td>
-    <td class="center"><button class="btn sm red" data-qdel="${i}">✕</button></td></tr>`).join("");
-  if($("#qkTable"))$("#qkTable").innerHTML=head+rows;
-  $$('#qkTable [data-qdel]').forEach(b=>b.onclick=()=>{QK.defects.splice(+b.dataset.qdel,1);renderQkList();});}
-async function qkSave(){
-  const a=areaByCode($("#qkArea").value);if(!a){toast("Chọn khu vực");return;}
-  const period=activePeriodId();
-  if(!canEditFunction(a.code,period)){toast("Function "+a.code+" hiện không thể sửa (đã gửi/đã chốt)");return;}
-  if(!QK.defects.length){toast("Chưa có lỗi nào trong danh sách");return;}
-  const date=$("#qkDate").value||todayISO();const auditor=(CURRENT_USER&&CURRENT_USER.name)||$("#qkAuditor").value.trim()||SET.defaultAuditor||"(chưa nhập)";
-  const dmap={};QK.defects.forEach(d=>{dmap[d.cat+"||"+d.req]=d;});
-  const batch=period+"|"+a.code;
-  for(let i=0;i<a.items.length;i++){const it=a.items[i];const d=dmap[(it.cat||"(Không phân loại)")+"||"+it.req];
-    const score=d?d.score:2;
-    await dbPut({id:batch+"|"+i,batch,date,auditor,code:a.code,full:a.full,period,cat:it.cat,req:it.req,
-      score,cls:clsOf(score),finding:d?d.finding:"",evidence:d?d.evidence:"",images:d?d.images:[]});}
-  await reloadRecords();await writeFile();
-  const curStatus=subOf(a.code,period).status;
-  await setSubStatus(a.code,period,{auditor,updatedAt:new Date().toISOString(),status:curStatus==="SUBMITTED"?"SUBMITTED":"DRAFT"});
-  const sc=areaScore(a.code);const nd=QK.defects.length;
-  toast("Đã lưu "+a.code+": "+sc.actual+"/"+sc.poss+" ("+(sc.pct*100).toFixed(1)+"%) — "+nd+" lỗi ghi nhận");maybeAutoPush();
-  QK={defects:[],img:[]};$("#qkFinding").value="";$("#qkEv").value="";refreshQkImg();renderQkList();renderAll();}
 let CURRENT={code:null,rows:[]};let activeItem=null;let dirtyEval=false;
-function loadAreaForm(code){
-  const a=areaByCode(code);const period=activePeriodId();const sub=subOf(code,period);
-  CURRENT={code,rows:[],period,sub,readOnly:!canEditFunction(code,period)};dirtyEval=false;activeItem=null;
+function myAuditorKey(){return safeName((CURRENT_USER&&(CURRENT_USER.code||CURRENT_USER.name))||"");}
+function loadAreaForm(code,previewKey){
+  const a=areaByCode(code);const period=activePeriodId();
+  const preview=!!previewKey;
+  const submitterKey=preview?previewKey:(isAdmin()?null:myAuditorKey());
+  const sub=subOf(code,period,submitterKey);
+  CURRENT={code,rows:[],period,sub,submitterKey,preview,readOnly:preview||!canEditFunction(code,period,submitterKey)};
+  dirtyEval=false;activeItem=null;
   $("#areaActions").style.display=code?"flex":"none";
   if(!a){$("#checklistHost").innerHTML="";$("#areaDesc").textContent="";return;}
   const stMap={DRAFT:["📝 Nháp","t1"],SUBMITTED:["📤 Đã gửi — chờ Admin chốt","t1"],LOCKED:["🔒 Đã chốt","t2"]};
   const stx=stMap[sub.status]||stMap.DRAFT;
-  $("#areaDesc").innerHTML="Kỳ <b>"+esc(periodLabel(period))+"</b> · Số câu hỏi: <b>"+a.items.length+"</b> · Điểm chuẩn tối đa: <b>"+(a.items.length*2)+"</b> · <span class=\"tag "+stx[1]+"\">"+stx[0]+"</span>";
-  const prev=latestByArea(code);const pmap={};
+  const modeTxt=preview?(' · <span class="tag t1">👁️ Xem bài của '+esc(sub.auditor||"")+' (chỉ xem)</span>')
+    :(submitterKey?' · <span class="muted" style="font-size:11.5px">Bài chấm riêng của bạn — Admin sẽ chọn 1 bài làm kết quả cuối cùng ở tab Phê duyệt</span>':'');
+  $("#areaDesc").innerHTML="Kỳ <b>"+esc(periodLabel(period))+"</b> · Số câu hỏi: <b>"+a.items.length+"</b> · Điểm chuẩn tối đa: <b>"+(a.items.length*2)+"</b> · <span class=\"tag "+stx[1]+"\">"+stx[0]+"</span>"+modeTxt;
+  const prev=submitterKey?recordsForBatch(period+"|"+code+"|"+submitterKey):latestByArea(code,period);
+  const pmap={};
   prev.forEach(r=>{pmap[r.cat+"||"+r.req]={score:r.score,finding:r.finding,evidence:r.evidence,images:r.images||[]};});
   a.items.forEach(it=>{const p=pmap[it.cat+"||"+it.req]||{};
     CURRENT.rows.push({cat:it.cat,req:it.req,score:(p.score==null?2:p.score),finding:p.finding||"",evidence:p.evidence||"",images:(p.images||[]).slice()});});
@@ -953,6 +897,7 @@ function itemHtml(i,n){const r=CURRENT.rows[i];const ro=CURRENT.readOnly;const d
     </div>
   </div>`;}
 function footButtonsHtml(){
+  if(CURRENT.preview)return `<span class="muted">👁️ Đang xem bài của người khác — chỉ đọc, không sửa được ở đây</span>`;
   if(CURRENT.readOnly)return `<span class="muted">🔒 Không thể chỉnh sửa ở trạng thái hiện tại</span>`;
   if(CURRENT.sub&&CURRENT.sub.status==="SUBMITTED")return `<button class="btn big" id="adminSaveBtn">💾 Lưu thay đổi (Admin)</button>`;
   return `<button class="btn gray" id="draftBtn">💾 Lưu nháp</button> <button class="btn big" id="submitBtn">📤 Gửi kết quả</button>`;
@@ -995,11 +940,6 @@ async function onPaste(e){
     e.preventDefault();CURRENT.rows[activeItem].images=CURRENT.rows[activeItem].images||[];
     for(const f of imgs){try{CURRENT.rows[activeItem].images.push(await attachImage(f,CURRENT.period,CURRENT.code));}catch(err){}}
     refreshThumbs(activeItem);dirtyEval=true;toast("Đã dán "+imgs.length+" ảnh vào mục đang chọn ✓");
-  } else if(name==="quick"){
-    e.preventDefault();QK.img=QK.img||[];
-    const qcode=$("#qkArea").value;
-    for(const f of imgs){try{QK.img.push(await attachImage(f,activePeriodId(),qcode));}catch(err){}}
-    refreshQkImg();toast("Đã dán "+imgs.length+" ảnh vào form lỗi ✓");
   }
 }
 function onKey(e){
@@ -1007,7 +947,7 @@ function onKey(e){
   if((e.ctrlKey||e.metaKey)&&(e.key==="s"||e.key==="S")){e.preventDefault();
     const nm=(document.querySelector(".tab.active")||{}).dataset?document.querySelector(".tab.active").dataset.tab:"";
     if(nm==="input"){const db=$("#draftBtn"),asb=$("#adminSaveBtn");if(db)saveDraft();else if(asb)adminSaveEdit();else toast("Không thể lưu ở trạng thái hiện tại");}
-    else if(nm==="quick"){qkSave();} return;}
+    return;}
   if(typing)return;
   const tabEl=document.querySelector(".tab.active");if(!tabEl||tabEl.dataset.tab!=="input"||!CURRENT.code)return;
   if(e.key==="ArrowRight"){e.preventDefault();gotoStep((CURRENT.step||0)+1);return;}
@@ -1134,18 +1074,20 @@ function updateLive(){
 async function writeCurrentRows(statusOverride){
   const code=CURRENT.code;const a=areaByCode(code);if(!a)return null;
   const period=CURRENT.period||activePeriodId();
-  if(!canEditFunction(code,period)){toast("Function "+code+" hiện không thể sửa (đã gửi/đã chốt)");return null;}
+  const submitterKey=CURRENT.submitterKey||null;
+  if(CURRENT.preview){toast("Chỉ xem — không thể sửa bài của người khác ở đây");return null;}
+  if(!canEditFunction(code,period,submitterKey)){toast("Function "+code+" hiện không thể sửa (đã gửi/đã chốt)");return null;}
   const date=$("#inDate").value||todayISO();const auditor=(CURRENT_USER&&CURRENT_USER.name)||$("#inAuditor").value.trim()||"(chưa nhập)";
-  const batch=period+"|"+code;
+  const batch=period+"|"+code+(submitterKey?("|"+submitterKey):"");
   for(let i=0;i<CURRENT.rows.length;i++){const r=CURRENT.rows[i];
-    await dbPut({id:batch+"|"+i,batch,date,auditor,code,full:a.full,period,
+    await dbPut({id:batch+"|"+i,batch,date,auditor,code,full:a.full,period,submitterKey,
       cat:r.cat,req:r.req,score:r.score,cls:clsOf(r.score),finding:r.finding||"",evidence:r.evidence||"",images:(r.images||[])});}
   await reloadRecords();await writeFile();
-  const curStatus=subOf(code,period).status;const finalStatus=statusOverride||curStatus||"DRAFT";
+  const curStatus=subOf(code,period,submitterKey).status;const finalStatus=statusOverride||curStatus||"DRAFT";
   const patch={auditor,updatedAt:new Date().toISOString(),status:finalStatus};
   if(finalStatus==="SUBMITTED"&&curStatus!=="SUBMITTED"){patch.submittedAt=todayISO();patch.submittedBy=auditor;}
-  await setSubStatus(code,period,patch);
-  return areaScore(code,period);
+  await setSubStatus(code,period,patch,submitterKey,CURRENT_USER&&CURRENT_USER.name);
+  return areaScoreForBatch(batch);
 }
 async function saveDraft(){
   const sc=await writeCurrentRows("DRAFT");if(!sc)return;const rr=ratingOf(sc.pct);
@@ -1799,7 +1741,7 @@ async function doLogout(){
   const wasAdmin=!!(CURRENT_USER&&CURRENT_USER.admin);
   if(wasAdmin&&sbConfigured()){await SB.auth.signOut().catch(()=>{});clearInterval(pollTimer);}
   MEMBER=null;CURRENT_USER=null;
-  const ia=$("#inAuditor");if(ia){ia.value="";ia.readOnly=false;}const qa=$("#qkAuditor");if(qa){qa.value="";qa.readOnly=false;}
+  const ia=$("#inAuditor");if(ia){ia.value="";ia.readOnly=false;}
   applyUserUI();$("#loginUser").value="";$("#loginPass").value="";$("#loginUserCode").value="";
   setGate(true);
   toast("Đã đăng xuất");
@@ -1816,10 +1758,8 @@ function applyUserUI(){
   const lt=$("#loginTriggerBtn");if(lt)lt.style.display=CURRENT_USER?"none":"";
   const un=$("#userName");if(un)un.textContent=CURRENT_USER?CURRENT_USER.name:"";
   $$(".adminTab").forEach(t=>t.style.display=admin?"":"none");
-  $$(".guestTab").forEach(t=>t.style.display=CURRENT_USER?"":"none");
-  if(!admin){const act=document.querySelector(".tab.active");if(act&&(act.dataset.tab==="edit"||act.dataset.tab==="settings"||act.dataset.tab==="users"||act.dataset.tab==="mail"))switchTab("input");}
-  if(!CURRENT_USER){const act=document.querySelector(".tab.active");if(act&&(act.dataset.tab==="quick"||act.dataset.tab==="qa"||act.dataset.tab==="approve"))switchTab("input");}
-  if(CURRENT_USER){const n=CURRENT_USER.name;const ia=$("#inAuditor");if(ia){ia.value=n;ia.readOnly=true;}const qa=$("#qkAuditor");if(qa){qa.value=n;qa.readOnly=true;}}
+  if(!admin){const act=document.querySelector(".tab.active");if(act&&act.classList.contains("adminTab"))switchTab("input");}
+  if(CURRENT_USER){const n=CURRENT_USER.name;const ia=$("#inAuditor");if(ia){ia.value=n;ia.readOnly=true;}}
   updateCloudChip();
 }
 function isAdmin(){return !!(CURRENT_USER&&CURRENT_USER.admin);}
@@ -1915,15 +1855,16 @@ async function pushOne(it){
   else if(it.kind==="period_create"){const {error}=await SB.rpc("gmp_create_period",{p_id:p.id,p_functions:p.functions});if(error)throw error;}
   else if(it.kind==="period_reset"){const {error}=await SB.rpc("gmp_reset_period",{p_period:p.period});if(error)throw error;}
   else if(it.kind==="period_lock"){const {error}=await SB.rpc("gmp_lock_whole_period",{p_period:p.period});if(error)throw error;}
-  else if(it.kind==="submission"){const {error}=await SB.rpc("gmp_set_submission",{p_period:p.period,p_code:p.code,p_status:p.status,p_auditor:p.auditor||null});if(error)throw error;}
+  else if(it.kind==="submission"){const {error}=await SB.rpc("gmp_set_submission",{p_period:p.period,p_code:p.code,p_status:p.status,p_auditor:p.auditor||null,p_submitter_key:p.submitterKey||null,p_submitter_name:p.submitterName||null,p_final_submitter:p.finalSubmitter||null});if(error)throw error;}
   else if(it.kind==="capa"){const {error}=await SB.rpc("gmp_save_capa",{p_data:p});if(error)throw error;}
   else if(it.kind==="checklist"){const {error}=await SB.rpc("gmp_save_checklist",{p_data:p});if(error)throw error;}
   else if(it.kind==="settings"){const {error}=await SB.rpc("gmp_save_settings",{p_data:p});if(error)throw error;}
   else if(it.kind==="auditors"){const {error}=await SB.rpc("gmp_save_auditors",{p_data:p});if(error)throw error;}
+  else if(it.kind==="purge_candidates"){const {error}=await SB.rpc("gmp_purge_finalized_candidates",{p_period:p.period});if(error)throw error;}
 }
-function mapServerRecord(r){return {id:r.id,batch:r.batch,period:r.period,date:r.date,auditor:r.auditor,code:r.code,full:r.full_name,cat:r.cat,req:r.req,score:r.score,cls:r.cls,finding:r.finding,evidence:r.evidence,images:r.images||[]};}
+function mapServerRecord(r){return {id:r.id,batch:r.batch,period:r.period,date:r.date,auditor:r.auditor,code:r.code,full:r.full_name,cat:r.cat,req:r.req,score:r.score,cls:r.cls,finding:r.finding,evidence:r.evidence,images:r.images||[],submitterKey:r.submitter_key||null};}
 function mapServerPeriod(r){return {id:r.id,functions:r.functions||[],status:r.status,createdAt:r.created_at,closedAt:r.closed_at,closedBy:r.closed_by};}
-function mapServerSub(r){return {id:r.id,period:r.period,code:r.code,status:r.status,auditor:r.auditor,updatedAt:r.updated_at,submittedAt:r.submitted_at,submittedBy:r.submitted_by,lockedAt:r.locked_at,lockedBy:r.locked_by};}
+function mapServerSub(r){return {id:r.id,period:r.period,code:r.code,status:r.status,auditor:r.auditor,submitterKey:r.submitter_key||null,submitterName:r.submitter_name||null,finalSubmitter:r.final_submitter||null,updatedAt:r.updated_at,submittedAt:r.submitted_at,submittedBy:r.submitted_by,lockedAt:r.locked_at,lockedBy:r.locked_by};}
 async function pullAll(silent){
   if(!sbConfigured()||!SESSION_READY)return;
   syncBusy=true;updateCloudChip();
@@ -1974,15 +1915,24 @@ function inferPeriod(dateStr){const m=/^(\d{4})-(\d{2})/.exec(dateStr||"");retur
 function activePeriodId(){return SET.currentPeriod||currentMonthStr();}
 function activePeriod(){return PERIODS.find(p=>p.id===activePeriodId())||null;}
 async function reloadPeriods(){PERIODS=await perAll();PERIODS.sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);}
-function subKey(period,code){return period+"|"+code;}
+function subKey(period,code,submitterKey){return period+"|"+code+(submitterKey?("|"+submitterKey):"");}
 async function reloadSubs(){const all=await subAll();SUBS={};all.forEach(s=>SUBS[s.id]=s);}
-function subOf(code,period){period=period||activePeriodId();return SUBS[subKey(period,code)]||{id:subKey(period,code),period,code,status:"DRAFT"};}
-async function setSubStatus(code,period,patch){const key=subKey(period,code);const cur=SUBS[key]||{id:key,period,code,status:"DRAFT"};const next=Object.assign({},cur,patch);await subPut(next);SUBS[key]=next;
-  if(SESSION_READY)enqueueSync("submission",key,{period,code,status:next.status,auditor:next.auditor||null});
-  return next;}
+function subOf(code,period,submitterKey){period=period||activePeriodId();const key=subKey(period,code,submitterKey);
+  return SUBS[key]||{id:key,period,code,status:"DRAFT",submitterKey:submitterKey||null};}
+function candidatesForFunction(code,period){period=period||activePeriodId();
+  return Object.values(SUBS).filter(s=>s.period===period&&s.code===code&&s.submitterKey);}
+async function setSubStatus(code,period,patch,submitterKey,submitterName){
+  const key=subKey(period,code,submitterKey);
+  const cur=SUBS[key]||{id:key,period,code,status:"DRAFT",submitterKey:submitterKey||null};
+  const next=Object.assign({},cur,patch);if(submitterName)next.submitterName=submitterName;
+  await subPut(next);SUBS[key]=next;
+  if(SESSION_READY)enqueueSync("submission",key,{period,code,status:next.status,auditor:next.auditor||null,
+    submitterKey:submitterKey||null,submitterName:next.submitterName||null,finalSubmitter:next.finalSubmitter||null});
+  return next;
+}
 function functionLocked(code,period){period=period||activePeriodId();const per=PERIODS.find(p=>p.id===period);if(per&&per.status==="Đã chốt")return true;return subOf(code,period).status==="LOCKED";}
-function functionSubmitted(code,period){return subOf(code,period).status==="SUBMITTED";}
-function canEditFunction(code,period){if(functionLocked(code,period))return false;if(functionSubmitted(code,period)&&!isAdmin())return false;return true;}
+function functionSubmitted(code,period,submitterKey){return subOf(code,period,submitterKey).status==="SUBMITTED";}
+function canEditFunction(code,period,submitterKey){if(functionLocked(code,period))return false;if(functionSubmitted(code,period,submitterKey)&&!isAdmin())return false;return true;}
 async function migrateToPeriods(){
   let changed=false;
   for(const r of RECORDS){if(!r.period){r.period=inferPeriod(r.date);await dbPut(r);changed=true;}}
@@ -2094,6 +2044,75 @@ function renderApprove(){
   $("#apTable").innerHTML=head+rows;
   $$('#apTable [data-lock]').forEach(b=>b.onclick=()=>lockFunction(b.dataset.lock));
   $$('#apTable [data-apedit]').forEach(b=>b.onclick=()=>{const c=b.dataset.apedit;switchTab("input");$("#inArea").value=c;loadAreaForm(c);updateLive();toast("Đang mở khu "+c);});
+  renderCandidateReview(pid,admin);
+}
+function renderCandidateReview(pid,admin){
+  const card=$("#apCandidatesCard"),host=$("#apCandidates");if(!card||!host)return;
+  if(!admin){card.style.display="none";return;}
+  const groups=[];
+  CHK.forEach(a=>{const cands=candidatesForFunction(a.code,pid);if(cands.length)groups.push({area:a,cands});});
+  card.style.display=groups.length?"":"none";
+  if(!groups.length){host.innerHTML="";return;}
+  host.innerHTML=groups.map(g=>{
+    const finalKey=subOf(g.area.code,pid).finalSubmitter||null;
+    const locked=functionLocked(g.area.code,pid);
+    const rows=g.cands.map(c=>{
+      const sc=areaScoreForBatch(pid+"|"+g.area.code+"|"+c.submitterKey);
+      const scoreTxt=sc?(sc.actual+"/"+sc.poss+" ("+(sc.pct*100).toFixed(0)+"%)"):"chưa có điểm";
+      const chosen=finalKey===c.submitterKey;
+      const stTxt={DRAFT:"📝 Nháp",SUBMITTED:"📤 Đã gửi"}[c.status]||c.status;
+      const pickBtn=(c.status==="SUBMITTED"&&!locked)?`<button class="btn sm" data-cpick="${esc(g.area.code)}|${esc(c.submitterKey)}">✅ Chọn làm kết quả cuối cùng</button>`:"";
+      return `<tr>
+        <td>${esc(c.auditor||c.submitterName||c.submitterKey)}</td>
+        <td>${scoreTxt}</td>
+        <td class="center">${stTxt}${chosen?' <span class="tag t2">✅ Đã chọn</span>':""}</td>
+        <td class="center"><button class="btn sm amber" data-cview="${esc(g.area.code)}|${esc(c.submitterKey)}">👁️ Xem</button> ${pickBtn}</td>
+      </tr>`;
+    }).join("");
+    return `<div style="margin-bottom:16px">
+      <div style="font-weight:700;margin-bottom:6px">${esc(g.area.code)} — ${esc(g.area.full)} <span class="muted" style="font-weight:400">(${g.cands.length} bài đã chấm)</span></div>
+      <div style="overflow-x:auto"><table class="data"><tr><th>Auditor</th><th>Điểm</th><th class="center">Trạng thái</th><th class="center">Thao tác</th></tr>${rows}</table></div>
+    </div>`;
+  }).join("");
+  $$('#apCandidates [data-cview]').forEach(b=>b.onclick=()=>{const [code,key]=b.dataset.cview.split("|");switchTab("input");$("#inArea").value=code;loadAreaForm(code,key);updateLive();toast("Đang xem bài chấm của khu "+code);});
+  $$('#apCandidates [data-cpick]').forEach(b=>b.onclick=()=>{const [code,key]=b.dataset.cpick.split("|");promoteCandidate(code,key);});
+}
+async function promoteCandidate(code,submitterKey){
+  if(!isAdmin()){toast("Chỉ Admin được chọn kết quả cuối cùng");return;}
+  const period=activePeriodId();
+  if(functionLocked(code,period)){toast("Function này đã bị khoá");return;}
+  const a=areaByCode(code);if(!a)return;
+  const candBatch=period+"|"+code+"|"+submitterKey;
+  const candRecs=recordsForBatch(candBatch);
+  if(!candRecs.length){toast("Không tìm thấy dữ liệu bài chấm này");return;}
+  const candSub=subOf(code,period,submitterKey);
+  if(!confirm("Chọn bài của "+(candSub.auditor||submitterKey)+" làm kết quả CHÍNH THỨC cho khu vực "+code+"?\n\nBạn có thể sửa lại bản chính thức sau khi chọn (tab Chấm điểm), trước khi bấm 🔒 Chốt.\n\nTiếp tục?"))return;
+  const canonBatch=period+"|"+code;
+  const byKey={};candRecs.forEach(r=>{byKey[(r.cat||"")+"||"+r.req]=r;});
+  for(let i=0;i<a.items.length;i++){const it=a.items[i];const r=byKey[(it.cat||"")+"||"+it.req];
+    await dbPut({id:canonBatch+"|"+i,batch:canonBatch,period,code,full:a.full,submitterKey:null,
+      date:(r&&r.date)||todayISO(),auditor:candSub.auditor||"",
+      cat:it.cat,req:it.req,score:r?r.score:null,cls:r?r.cls:"",finding:(r&&r.finding)||"",evidence:(r&&r.evidence)||"",images:(r&&r.images)||[]});}
+  await reloadRecords();
+  await setSubStatus(code,period,{status:"SUBMITTED",auditor:candSub.auditor||"",submittedAt:todayISO(),submittedBy:candSub.auditor||"",finalSubmitter:submitterKey});
+  renderApprove();renderAll();maybeAutoPush();
+  toast("✅ Đã chọn bài của "+(candSub.auditor||submitterKey)+" làm kết quả chính thức cho "+code);
+}
+async function purgeFinalizedCandidates(){
+  if(!isAdmin()){toast("Chỉ Admin được dọn dữ liệu");return;}
+  const pid=activePeriodId();
+  const lockedCodes=CHK.filter(a=>subOf(a.code,pid).status==="LOCKED").map(a=>a.code);
+  if(!lockedCodes.length){toast("Chưa có khu vực nào đã Chốt trong kỳ này để dọn");return;}
+  const toDelRecs=RECORDS.filter(r=>r.period===pid&&r.submitterKey&&lockedCodes.includes(r.code));
+  const toDelSubs=Object.values(SUBS).filter(s=>s.period===pid&&s.submitterKey&&lockedCodes.includes(s.code));
+  if(!toDelRecs.length&&!toDelSubs.length){toast("Không có bài chấm cá nhân nào cần dọn");return;}
+  if(!confirm("Xoá TOÀN BỘ bài chấm cá nhân (không phải bản chính thức) của "+lockedCodes.length+" khu vực đã Chốt trong kỳ "+periodLabel(pid)+" ("+toDelRecs.length+" dòng điểm)?\n\nBản chính thức đã Chốt KHÔNG bị ảnh hưởng. Không thể hoàn tác.\n\nTiếp tục?"))return;
+  for(const r of toDelRecs)await dbDel(r.id);
+  for(const s of toDelSubs){delete SUBS[s.id];await subDel(s.id);}
+  if(SESSION_READY)enqueueSync("purge_candidates",pid,{period:pid});
+  await reloadRecords();
+  renderApprove();renderAll();
+  toast("🗑️ Đã dọn "+toDelRecs.length+" dòng dữ liệu chấm cá nhân");
 }
 /* ===== LỊCH SỬ GMP SCORE (chỉ xem, kỳ đã chốt) ===== */
 function renderHistory(){
@@ -2165,8 +2184,8 @@ async function sendAreaMail(code){
   }catch(e){toast("Lỗi gửi mail: "+e.message);}
 }
 /* thứ tự tab */
-const DEFAULT_TAB_ORDER=["stats","input","quick","qa","capa","approve","mail","sync","edit","settings","users","history","guide"];
-const TAB_LABELS={input:"📝 Chấm điểm",quick:"⚡ Lỗi nhanh",stats:"📊 Thống kê",qa:"📋 Tổng hợp QA",capa:"🛠️ CAPA",approve:"✅ Phê duyệt",mail:"✉️ Mail",sync:"🔄 Đồng bộ",edit:"✏️ Chỉnh sửa",settings:"🔧 Cài đặt",users:"👥 Tài khoản",history:"🕘 Lịch sử",guide:"📖 Hướng dẫn"};
+const DEFAULT_TAB_ORDER=["stats","input","qa","capa","approve","mail","sync","edit","settings","users","history","guide"];
+const TAB_LABELS={input:"📝 Chấm điểm",stats:"📊 Thống kê",qa:"📋 Tổng hợp QA",capa:"🛠️ CAPA",approve:"✅ Phê duyệt",mail:"✉️ Mail",sync:"🔄 Đồng bộ",edit:"✏️ Chỉnh sửa",settings:"🔧 Cài đặt",users:"👥 Tài khoản",history:"🕘 Lịch sử",guide:"📖 Hướng dẫn"};
 function currentTabOrder(){let o=(SET.tabOrder&&SET.tabOrder.length)?SET.tabOrder.slice():DEFAULT_TAB_ORDER.slice();DEFAULT_TAB_ORDER.forEach(c=>{if(!o.includes(c))o.push(c);});return o.filter(c=>DEFAULT_TAB_ORDER.includes(c));}
 function applyTabOrder(){const bar=$("#tabsBar");if(!bar)return;currentTabOrder().forEach(code=>{const el=bar.querySelector('.tab[data-tab="'+code+'"]');if(el)bar.appendChild(el);});}
 function renderTabOrderSettings(){const el=$("#tabOrderList");if(!el)return;const order=currentTabOrder();
@@ -2202,23 +2221,14 @@ async function boot(){
   if($("#reportPeriod")&&!$("#reportPeriod").value)$("#reportPeriod").value=currentMonthStr();
   $("#createPeriodBtn").onclick=createNewPeriod;
   $("#resetPeriodBtn").onclick=resetActivePeriod;
+  $("#purgeCandidatesBtn").onclick=purgeFinalizedCandidates;
   $("#lockPeriodBtn").onclick=lockWholePeriod;
   $("#capaArea").onchange=renderCAPA;$("#capaStatus").onchange=renderCAPA;
   $("#expCapaCsvBtn").onclick=exportCapaCsv;$("#expCapaXlsxBtn").onclick=exportCapaXlsx;
-  $("#qkDate").value=todayISO();if(SET.defaultAuditor&&!$("#qkAuditor").value)$("#qkAuditor").value=SET.defaultAuditor;
-  $("#qkArea").onchange=qkAreaChange;$("#qkCat").onchange=qkFillReqs;$("#qkAddBtn").onclick=qkAdd;$("#qkSaveBtn").onclick=qkSave;
-  $("#qkImgInput").onchange=async()=>{const inp=$("#qkImgInput");const files=Array.from(inp.files||[]);QK.img=QK.img||[];
-    for(const f of files){if(!f.type.startsWith("image/"))continue;try{QK.img.push(await attachImage(f,activePeriodId(),$("#qkArea").value));}catch(e){}}inp.value="";refreshQkImg();};
-  $("#qkImgWrap").onclick=e=>{const rm=e.target.closest("[data-qrm]");if(rm){QK.img.splice(+rm.dataset.qrm,1);refreshQkImg();return;}const v=e.target.closest("img[data-qview]");if(v)showLightbox(v.src);};
   document.addEventListener("keydown",onKey);
   document.addEventListener("paste",onPaste);
-  window.addEventListener("beforeunload",e=>{if((QK&&QK.defects&&QK.defects.length)||dirtyEval){e.preventDefault();e.returnValue="";}});
+  window.addEventListener("beforeunload",e=>{if(dirtyEval){e.preventDefault();e.returnValue="";}});
   const pb=$("#printBtn");if(pb)pb.onclick=()=>window.print();
-  const qf=$("#qkFormCard");if(qf){qf.addEventListener("dragover",e=>{e.preventDefault();qf.classList.add("dragover");});
-    qf.addEventListener("dragleave",()=>qf.classList.remove("dragover"));
-    qf.addEventListener("drop",async e=>{e.preventDefault();qf.classList.remove("dragover");
-      const files=Array.from(e.dataTransfer.files||[]);QK.img=QK.img||[];
-      for(const f of files){if(!f.type.startsWith("image/"))continue;try{QK.img.push(await attachImage(f,activePeriodId(),$("#qkArea").value));}catch(err){}}refreshQkImg();});}
   $("#syncNowBtn").onclick=()=>doSync(false);
   restoreMediaDir();
   $("#hisPeriod").onchange=()=>renderHistoryDetail($("#hisPeriod").value);
