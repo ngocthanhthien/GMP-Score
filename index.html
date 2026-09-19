@@ -924,7 +924,7 @@ function renderChecklist(){
       <span id="stepCounter" class="pill"></span>
       <button class="btn sm" id="nextStep">Tiếp →</button></div>
     <div class="kbhint">⌨️ Phím tắt: <b>↑/↓</b> chọn mục · <b>2/1/0</b> chấm điểm · <b>←/→</b> đổi chủ đề · <b>Ctrl+S</b> lưu</div>`;
-  bindChecklist();updateCatTotals();updateLive();updateStepIndicators(0);
+  bindChecklist();updateCatTotals();updateLive();updateStepIndicators(0);hydrateThumbs();
 }
 function setActive(i){activeItem=i;$$("#steps .qitem").forEach(el=>el.classList.toggle("kactive",+el.dataset.i===i));}
 function moveActive(dir){const rows=CURRENT.rows;if(!rows||!rows.length)return;
@@ -984,7 +984,7 @@ function bindChecklist(){
   $("#checklistHost").onclick=e=>{
     const rm=e.target.closest("[data-rm]");
     if(rm){if(CURRENT.readOnly)return;const p=rm.dataset.rm.split("-");const i=+p[0],j=+p[1];if(CURRENT.rows[i].images)CURRENT.rows[i].images.splice(j,1);refreshThumbs(i);return;}
-    const v=e.target.closest("img[data-view]");if(v){showLightbox(v.src);return;}};
+    const v=e.target.closest("img[data-view]");if(v){openLightboxFor(v);return;}};
   const prev=$("#prevStep"),next=$("#nextStep");
   if(prev)prev.onclick=()=>gotoStep(CURRENT.step-1);
   if(next)next.onclick=()=>gotoStep(CURRENT.step+1);
@@ -1005,13 +1005,39 @@ function bindChecklist(){
       for(const f of files){if(!f.type.startsWith("image/"))continue;try{CURRENT.rows[i].images.push(await attachImage(f,CURRENT.period,CURRENT.code));}catch(e){}}
       refreshThumbs(i);dirtyEval=true;});});
 }
+/* ===== Ảnh: ảnh cũ/offline có sẵn base64 (im.data) hiện luôn; ảnh mới đã upload Storage
+   chỉ giữ path (im.path) — resolve qua signed URL khi cần hiển thị, có cache theo TTL. */
+const imgUrlCache=new Map(); // path -> {url, exp}
+async function resolveImgUrl(im){
+  if(im&&im.data)return im.data;
+  if(!im||!im.path||!sbConfigured())return "";
+  const now=Date.now();const hit=imgUrlCache.get(im.path);
+  if(hit&&hit.exp>now+60000)return hit.url;
+  try{
+    const {data,error}=await SB.storage.from("gmp-mediasave").createSignedUrl(im.path,3600);
+    if(error||!data)return "";
+    imgUrlCache.set(im.path,{url:data.signedUrl,exp:now+3600*1000});
+    return data.signedUrl;
+  }catch(e){return "";}
+}
+function hydrateThumbs(root){
+  (root||document).querySelectorAll('img[data-path]:not([src])').forEach(img=>{
+    resolveImgUrl({path:img.getAttribute("data-path")}).then(url=>{if(url)img.src=url;});
+  });
+}
 function thumbsHtml(imgs,i,ro){return (imgs||[]).map((im,j)=>{
   const bk=im.backupStatus==="mediasave"?'<i class="bk ok" title="Đã backup Mediasave">📁✓</i>':(im.backupStatus==="none"?'<i class="bk no" title="Chưa backup ra folder Mediasave">📁…</i>':"");
   const rm=ro?"":`<b data-rm="${i}-${j}">✕</b>`;
-  return `<span class="thumb"><img src="${im.data}" data-view="1" title="${esc(im.name||'')}">${bk}${rm}</span>`;
+  const srcAttr=im.data?` src="${im.data}"`:"";
+  return `<span class="thumb"><img${srcAttr} data-path="${esc(im.path||'')}" data-view="1" title="${esc(im.name||'')}">${bk}${rm}</span>`;
 }).join("");}
-function refreshThumbs(i){const w=document.querySelector('.imgwrap[data-i="'+i+'"]');if(w)w.innerHTML=thumbsHtml(CURRENT.rows[i].images,i,CURRENT.readOnly);}
+function refreshThumbs(i){const w=document.querySelector('.imgwrap[data-i="'+i+'"]');if(w){w.innerHTML=thumbsHtml(CURRENT.rows[i].images,i,CURRENT.readOnly);hydrateThumbs(w);}}
 function showLightbox(src){const lb=$("#lightbox");lb.querySelector("img").src=src;lb.style.display="flex";}
+function openLightboxFor(img){
+  if(img.getAttribute("src")){showLightbox(img.src);return;}
+  const path=img.getAttribute("data-path");if(!path)return;
+  resolveImgUrl({path}).then(url=>{if(url){img.src=url;showLightbox(url);}});
+}
 function fileToImg(file){return new Promise((res,rej)=>{const r=new FileReader();r.onerror=rej;
   r.onload=()=>{const img=new Image();img.onerror=rej;
     img.onload=()=>{const max=1280;let w=img.width,h=img.height;if(w>max||h>max){const s=Math.min(max/w,max/h);w=Math.round(w*s);h=Math.round(h*s);}
@@ -1049,15 +1075,20 @@ async function attachImage(file,period,code){
   const bk=await backupImageToMedia(period,code,im.data,mediaSeq[key]);
   im.backupStatus=bk.status;im.backupPath=bk.path||"";
   if(bk.status==="none"&&mediaDirHandle&&!attachImage._warned){attachImage._warned=true;toast("⚠️ Ảnh đã lưu trong app — chưa backup được ra folder Mediasave (kiểm tra quyền truy cập thư mục)");}
-  uploadImageToStorage(file,period,code,mediaSeq[key]).catch(()=>{});
+  const path=await uploadImageToStorage(file,period,code,mediaSeq[key]);
+  // Upload Storage thành công -> chỉ giữ path, KHÔNG nhúng base64 vào bản ghi (đây là thứ bị
+  // tải lại mỗi lần đồng bộ/pull — bỏ nó khỏi DB là điểm giảm egress lớn nhất). Offline/lỗi mạng
+  // -> giữ nguyên base64 như trước đây, không mất ảnh, không chặn luồng chấm điểm.
+  if(path){im.path=path;delete im.data;}
   return im;
 }
 async function uploadImageToStorage(file,period,code,seq){
-  if(!sbConfigured()||!SESSION_READY)return;
+  if(!sbConfigured()||!SESSION_READY||!navigator.onLine)return null;
   const fname="Mediasave/"+period+"/"+safeName(code)+"_"+String(seq).padStart(3,"0")+"_"+Date.now()+"_"+safeName(file.name||"anh.jpg");
-  try{const {error}=await SB.storage.from("gmp-mediasave").upload(fname,file,{upsert:false,contentType:file.type||"image/jpeg"});
-    if(error)throw error;}
-  catch(e){/* không chặn lưu record — người dùng có thể chọn lại ảnh sau khi mạng ổn định */}
+  try{const {error}=await SB.storage.from("gmp-mediasave").upload(fname,file,{upsert:false,contentType:file.type||"image/jpeg",cacheControl:"31536000"});
+    if(error)throw error;
+    return fname;}
+  catch(e){return null;/* không chặn lưu record — ảnh vẫn giữ base64 cục bộ, không mất dữ liệu */}
 }
 function updateCatTotals(){const cats=CURRENT.cats;if(!cats)return;cats.forEach((g,k)=>{
   let ca=0;g.items.forEach(i=>ca+=(CURRENT.rows[i].score||0));const cp=g.items.length*2;
@@ -1216,7 +1247,7 @@ async function buildFullReportBlob(){
   cw.views=[{state:"frozen",ySplit:1}];if(allF.length)cw.autoFilter="A1:N1";
 
   const used={};
-  CHK.forEach(a=>{
+  for(const a of CHK){
     const recs=latestByArea(a.code);
     const sh=wb.addWorksheet(areaSheetName(a.code,used));
     const sc=areaScore(a.code);const rk=sc?ratingColorKey(sc.pct):null;
@@ -1227,18 +1258,18 @@ async function buildFullReportBlob(){
     hdrStyle(sh.addRow(["#","Chủ đề","Yêu cầu","Điểm","Phân loại","Phát hiện","Bằng chứng","Số ảnh"]),P.hdrBg,P.hdrFg);
     sh.columns=[{width:5},{width:20},{width:46},{width:8},{width:15},{width:34},{width:22},{width:8}];
     const catMap={};
-    recs.forEach((r,i)=>{
+    for(const [i,r] of recs.entries()){
       const row=sh.addRow([i+1,r.cat,r.req,r.score,r.cls,r.finding,r.evidence,(r.images||[]).length]);
       row.alignment={wrapText:true,vertical:"top"};bandRow(row,i%2?P.bandB:P.bandA);
       fillCell(row.getCell(2),catTint(catMap,r.cat));
       if(r.score!=null){fillCell(row.getCell(4),P.scoreBg[r.score]);row.getCell(4).font={bold:true,color:{argb:P.scoreFg[r.score]}};}
       row.getCell(4).alignment={horizontal:"center"};
       const imgs=r.images||[];
-      if(imgs.length){row.height=72;imgs.forEach((im,j)=>{try{const id=wb.addImage({base64:b64of(im.data),extension:"jpeg"});sh.addImage(id,{tl:{col:8+j*1.6,row:row.number-1+0.05},ext:{width:92,height:66}});}catch(e){}});}
-    });
+      if(imgs.length){row.height=72;for(const [j,im] of imgs.entries()){try{const b64=await imgRawB64(im);if(!b64)continue;const id=wb.addImage({base64:b64,extension:"jpeg"});sh.addImage(id,{tl:{col:8+j*1.6,row:row.number-1+0.05},ext:{width:92,height:66}});}catch(e){}}}
+    }
     if(!recs.length){const er=sh.addRow(["","(Khu vực chưa được chấm điểm)"]);er.font={italic:true,color:{argb:P.gray}};}
     sh.views=[{state:"frozen",ySplit:3}];if(recs.length)sh.autoFilter="A3:H3";
-  });
+  }
 
   const buf=await wb.xlsx.writeBuffer();
   return new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
@@ -1380,6 +1411,17 @@ function hdrStyle(row,bg,fg){bg=bg||"FFEFF2F7";fg=fg||"FF1F2A37";row.font={bold:
 function colorScore(cell,score){const m={2:"FFDCFCE7",1:"FFFEF3C7",0:"FFFEE2E2"};if(m[score]!=null)fillCell(cell,m[score]);cell.alignment={horizontal:"center"};}
 function colorPct(cell,pct){fillCell(cell,pct>=passT()?"FFDCFCE7":pct>=impT()?"FFFEF3C7":"FFFEE2E2");cell.alignment={horizontal:"center"};}
 function b64of(dataUrl){return (dataUrl||"").split(",")[1]||"";}
+/* Ảnh cũ có sẵn base64 (im.data) -> dùng luôn; ảnh mới chỉ có path Storage -> tải về base64
+   RIÊNG lúc xuất Excel (không lưu lại), để không phải nhúng base64 thường trực vào DB. */
+async function imgRawB64(im){
+  if(im&&im.data)return b64of(im.data);
+  if(!im||!im.path||!sbConfigured())return null;
+  try{
+    const {data,error}=await SB.storage.from("gmp-mediasave").download(im.path);
+    if(error||!data)return null;
+    return bufToB64(await data.arrayBuffer());
+  }catch(e){return null;}
+}
 function recordsForExport(code){if(code)return latestByArea(code);let all=[];CHK.forEach(a=>{all=all.concat(latestByArea(a.code));});return all;}
 async function buildWorkbookBlob(code){
   if(typeof ExcelJS==="undefined")throw new Error("Thư viện Excel chưa tải");
@@ -1400,10 +1442,11 @@ async function buildWorkbookBlob(code){
   const d=wb.addWorksheet("DanhGia");
   hdrStyle(d.addRow(["batch","Ngày","Người đánh giá","Mã khu vực","Khu vực","Chủ đề","Yêu cầu","Điểm","Phân loại","Phát hiện","Bằng chứng (text)","Số ảnh","Ảnh đính kèm"]));
   d.columns=[{width:22},{width:12},{width:18},{width:12},{width:22},{width:20},{width:42},{width:7},{width:15},{width:34},{width:20},{width:7},{width:60}];
-  recs.forEach(rec=>{const imgs=rec.images||[];
+  for(const rec of recs){const imgs=rec.images||[];
     const row=d.addRow([rec.batch,rec.date,rec.auditor,rec.code,rec.full,rec.cat,rec.req,rec.score,rec.cls,rec.finding,rec.evidence,imgs.length,""]);
     row.alignment={wrapText:true,vertical:"top"};colorScore(row.getCell(8),rec.score);
-    if(imgs.length){row.height=72;imgs.forEach((im,j)=>{try{const id=wb.addImage({base64:b64of(im.data),extension:"jpeg"});d.addImage(id,{tl:{col:12+j*1.6,row:row.number-1+0.05},ext:{width:92,height:66}});}catch(e){}});}});
+    if(imgs.length){row.height=72;for(const [j,im] of imgs.entries()){try{const b64=await imgRawB64(im);if(!b64)continue;const id=wb.addImage({base64:b64,extension:"jpeg"});d.addImage(id,{tl:{col:12+j*1.6,row:row.number-1+0.05},ext:{width:92,height:66}});}catch(e){}}}
+  }
   d.views=[{state:"frozen",ySplit:1}];d.autoFilter="A1:M1";
   const cap=recs.filter(r=>r.score!=null&&r.score<2);cap.sort((a,b)=>(a.score-b.score)||(a.code<b.code?-1:1));
   const cw=wb.addWorksheet("CAPA");
@@ -1887,51 +1930,120 @@ async function pushOne(it){
 function mapServerRecord(r){return {id:r.id,batch:r.batch,period:r.period,date:r.date,auditor:r.auditor,code:r.code,full:r.full_name,cat:r.cat,req:r.req,score:r.score,cls:r.cls,finding:r.finding,evidence:r.evidence,images:r.images||[],submitterKey:r.submitter_key||null};}
 function mapServerPeriod(r){return {id:r.id,functions:r.functions||[],status:r.status,createdAt:r.created_at,closedAt:r.closed_at,closedBy:r.closed_by};}
 function mapServerSub(r){return {id:r.id,period:r.period,code:r.code,status:r.status,auditor:r.auditor,submitterKey:r.submitter_key||null,submitterName:r.submitter_name||null,finalSubmitter:r.final_submitter||null,updatedAt:r.updated_at,submittedAt:r.submitted_at,submittedBy:r.submitted_by,lockedAt:r.locked_at,lockedBy:r.locked_by};}
-async function pullAll(silent){
+const ALL_SYNC_TABLES=["gmp_periods","gmp_submissions","gmp_records","gmp_capa","gmp_checklist","gmp_settings","gmp_auditors"];
+/* Delta sync: chỉ áp dụng cho bảng nhiều-dòng có cột updated_at (gmp_submissions đã có sẵn;
+   gmp_records/gmp_periods cần chạy supabase/add_updated_at.sql trước). Nếu cột chưa tồn tại,
+   query lọc sẽ lỗi -> tự động rơi về full-select như cũ, KHÔNG cần biết trước schema đã sẵn sàng
+   chưa. 4 bảng JSONB 1-dòng (capa/checklist/settings/auditors) giữ full-select vì không có nhiều
+   dòng để lọc bớt. */
+const DELTA_TABLES=new Set(["gmp_records","gmp_periods","gmp_submissions"]);
+const deltaUnsupported=new Set(); // bảng đã xác nhận thiếu cột updated_at trong phiên này
+function syncCursorKey(t){return "gmp_sync_since_"+t;}
+function getSyncCursor(t){try{return localStorage.getItem(syncCursorKey(t))||null;}catch(e){return null;}}
+function setSyncCursor(t,v){if(!v)return;try{localStorage.setItem(syncCursorKey(t),v);}catch(e){}}
+function bumpCursorFromRows(t,rows){
+  if(!rows||!rows.length)return;
+  let max=getSyncCursor(t);
+  for(const r of rows){if(r&&r.updated_at&&(!max||r.updated_at>max))max=r.updated_at;}
+  if(max)setSyncCursor(t,max);
+}
+function isMissingUpdatedAtError(err){
+  if(!err)return false;
+  if(err.code==="42703")return true;
+  return /column .*updated_at.* does not exist/i.test(err.message||"");
+}
+async function fetchTableRows(table,force){
+  if(!force&&DELTA_TABLES.has(table)&&!deltaUnsupported.has(table)){
+    const since=getSyncCursor(table);
+    if(since){
+      const r=await SB.from(table).select("*").gt("updated_at",since).order("updated_at",{ascending:true});
+      if(!r.error){bumpCursorFromRows(table,r.data);return r;}
+      if(isMissingUpdatedAtError(r.error))deltaUnsupported.add(table);
+      // lỗi khác (mạng/RLS…) -> thử lại bằng full-select bên dưới, không đánh dấu unsupported
+    }
+  }
+  const r=await SB.from(table).select("*");
+  if(!r.error)bumpCursorFromRows(table,r.data);
+  return r;
+}
+/* pullTables: chỉ kéo đúng các bảng trong "tables" thay vì luôn kéo cả 7 bảng —
+   dùng cho Realtime (chỉ bảng vừa đổi) và poller định kỳ. force=true bỏ qua delta cursor,
+   luôn full-select (dùng lúc boot/login/logout để đảm bảo tự phục hồi đúng mỗi phiên mới). */
+async function pullTables(tables,silent,force){
   if(!sbConfigured()||!SESSION_READY)return;
+  const want=new Set(tables&&tables.length?tables:ALL_SYNC_TABLES);
   syncBusy=true;updateCloudChip();
   try{
     const pend=await pendAll();
     const pendKeys=new Set(pend.map(p=>p.key));
     const resetPeriods=new Set(pend.filter(p=>p.kind==="period_reset").map(p=>p.id));
-    const [rp,rs,rr,rc,rk,rt,ra]=await Promise.all([
-      SB.from("gmp_periods").select("*"),
-      SB.from("gmp_submissions").select("*"),
-      SB.from("gmp_records").select("*"),
-      SB.from("gmp_capa").select("*").eq("id","current").maybeSingle(),
-      SB.from("gmp_checklist").select("*").eq("id","current").maybeSingle(),
-      SB.from("gmp_settings").select("*").eq("id","current").maybeSingle(),
-      SB.from("gmp_auditors").select("*").eq("id","current").maybeSingle(),
-    ]);
-    if(rp.data){for(const row of rp.data){if(!pendKeys.has(pendKey("period_create",row.id))&&!pendKeys.has(pendKey("period_lock",row.id)))await perPut(mapServerPeriod(row));}await reloadPeriods();}
-    if(rs.data){for(const row of rs.data){if(resetPeriods.has(row.period))continue;if(!pendKeys.has(pendKey("submission",row.id)))await subPut(mapServerSub(row));}await reloadSubs();}
-    if(rr.data){for(const row of rr.data){if(resetPeriods.has(row.period))continue;if(!pendKeys.has(pendKey("record",row.id))&&!pendKeys.has(pendKey("record_del",row.id)))await dbPut(mapServerRecord(row));}await reloadRecords();}
-    if(rk.data&&rk.data.data&&!pendKeys.has(pendKey("checklist","current"))&&!chkDirty){CHK=rk.data.data;sortCHK();try{localStorage.setItem(LS_CHK,JSON.stringify(CHK));}catch(e){}fillAreaSelects();}
-    if(rt.data&&rt.data.data&&!pendKeys.has(pendKey("settings","current"))){SET=Object.assign(defSettings(),rt.data.data);try{localStorage.setItem(LS_SET,JSON.stringify(SET));}catch(e){}applyTabOrder();}
-    if(rc.data&&!pendKeys.has(pendKey("capa","current"))){CAPA=rc.data.data||{};try{localStorage.setItem(LS_CAPA,JSON.stringify(CAPA));}catch(e){}}
-    if(ra.data&&!pendKeys.has(pendKey("auditors","current"))){AUDITORS=ra.data.data||[];try{localStorage.setItem(LS_AUD,JSON.stringify(AUDITORS));}catch(e){}renderAuditorsAdmin();}
+    const jobs={};
+    if(want.has("gmp_periods"))jobs.rp=fetchTableRows("gmp_periods",force);
+    if(want.has("gmp_submissions"))jobs.rs=fetchTableRows("gmp_submissions",force);
+    if(want.has("gmp_records"))jobs.rr=fetchTableRows("gmp_records",force);
+    if(want.has("gmp_capa"))jobs.rc=SB.from("gmp_capa").select("*").eq("id","current").maybeSingle();
+    if(want.has("gmp_checklist"))jobs.rk=SB.from("gmp_checklist").select("*").eq("id","current").maybeSingle();
+    if(want.has("gmp_settings"))jobs.rt=SB.from("gmp_settings").select("*").eq("id","current").maybeSingle();
+    if(want.has("gmp_auditors"))jobs.ra=SB.from("gmp_auditors").select("*").eq("id","current").maybeSingle();
+    const keys=Object.keys(jobs);
+    const results=await Promise.all(keys.map(k=>jobs[k]));
+    const out={};keys.forEach((k,i)=>out[k]=results[i]);
+    const {rp,rs,rr,rc,rk,rt,ra}=out;
+    if(rp&&rp.data){for(const row of rp.data){if(!pendKeys.has(pendKey("period_create",row.id))&&!pendKeys.has(pendKey("period_lock",row.id)))await perPut(mapServerPeriod(row));}await reloadPeriods();}
+    if(rs&&rs.data){for(const row of rs.data){if(resetPeriods.has(row.period))continue;if(!pendKeys.has(pendKey("submission",row.id)))await subPut(mapServerSub(row));}await reloadSubs();}
+    if(rr&&rr.data){for(const row of rr.data){if(resetPeriods.has(row.period))continue;if(!pendKeys.has(pendKey("record",row.id))&&!pendKeys.has(pendKey("record_del",row.id)))await dbPut(mapServerRecord(row));}await reloadRecords();}
+    if(rk&&rk.data&&rk.data.data&&!pendKeys.has(pendKey("checklist","current"))&&!chkDirty){CHK=rk.data.data;sortCHK();try{localStorage.setItem(LS_CHK,JSON.stringify(CHK));}catch(e){}fillAreaSelects();}
+    if(rt&&rt.data&&rt.data.data&&!pendKeys.has(pendKey("settings","current"))){SET=Object.assign(defSettings(),rt.data.data);try{localStorage.setItem(LS_SET,JSON.stringify(SET));}catch(e){}applyTabOrder();}
+    if(rc&&rc.data&&!pendKeys.has(pendKey("capa","current"))){CAPA=rc.data.data||{};try{localStorage.setItem(LS_CAPA,JSON.stringify(CAPA));}catch(e){}}
+    if(ra&&ra.data&&!pendKeys.has(pendKey("auditors","current"))){AUDITORS=ra.data.data||[];try{localStorage.setItem(LS_AUD,JSON.stringify(AUDITORS));}catch(e){}renderAuditorsAdmin();}
     renderAll();if($("#inArea")&&$("#inArea").value)loadAreaForm($("#inArea").value);
     if(!silent)toast("🔄 Đã đồng bộ với máy chủ");
   }catch(e){if(!silent)toast("Lỗi đồng bộ: "+(e.message||e));}
   finally{syncBusy=false;updateCloudChip();}
 }
-function startPoller(){clearInterval(pollTimer);pollTimer=setInterval(()=>{if(!dirtyEval&&!syncBusy&&navigator.onLine)pullAll(true).catch(()=>{});},30000);}
+async function pullAll(silent){return pullTables(ALL_SYNC_TABLES,silent,true);}
+let pollTick=0;
+function startPoller(){
+  clearInterval(pollTimer);pollTick=0;
+  pollTimer=setInterval(()=>{
+    if(document.hidden)return; // tab nền: không tốn egress cho tới khi người dùng quay lại
+    if(dirtyEval||syncBusy||!navigator.onLine)return;
+    pollTick++;
+    // Realtime đang sống (⚡) thì vòng 30s chỉ còn là lưới an toàn dự phòng —
+    // giãn ra ~2 phút/lần thay vì kéo lại cả 7 bảng mỗi 30s một cách dư thừa.
+    if(realtimeReady&&(pollTick%4!==0))return;
+    // Đa số các lượt: dùng delta (chỉ bảng có updated_at mới lọc bớt, các bảng khác tự full-select).
+    // Cứ ~20 lượt (khoảng 10-40 phút tuỳ có Realtime hay không) full-select 1 lần để tự phục hồi
+    // nếu delta bị lệch vì lý do nào đó (đồng hồ máy chủ, cột chưa migrate xong…).
+    const forceFull=(pollTick%20===0);
+    pullTables(ALL_SYNC_TABLES,true,forceFull).catch(()=>{});
+  },30000);
+}
+document.addEventListener("visibilitychange",()=>{
+  if(!document.hidden&&sbConfigured()&&SESSION_READY&&!dirtyEval&&!syncBusy)pullAll(true).catch(()=>{});
+});
 async function doSync(silent){await flushPending();await pullAll(silent);}
 function maybeAutoPush(){scheduleFlush();}
 
 /* ===== Realtime: đẩy dữ liệu về gần như ngay lập tức thay vì chờ vòng polling 30s ===== */
 let realtimeChannel=null,realtimeReady=false,realtimePullTimer=null;
+let realtimeChangedTables=new Set();
 const REALTIME_TABLES=["gmp_records","gmp_submissions","gmp_periods","gmp_capa","gmp_checklist","gmp_settings","gmp_auditors"];
-function scheduleRealtimePull(){
+function scheduleRealtimePull(table){
+  realtimeChangedTables.add(table);
   clearTimeout(realtimePullTimer);
-  // gộp nhiều sự kiện đến gần nhau (VD: lưu 1 Function ra 20-30 dòng) thành 1 lượt kéo
-  realtimePullTimer=setTimeout(()=>{if(!dirtyEval&&!syncBusy)pullAll(true).catch(()=>{});},400);
+  // gộp nhiều sự kiện đến gần nhau (VD: lưu 1 Function ra 20-30 dòng) thành 1 lượt kéo,
+  // nhưng CHỈ kéo (các) bảng thực sự vừa đổi — không kéo lại toàn bộ 7 bảng cho 1 thay đổi nhỏ.
+  realtimePullTimer=setTimeout(()=>{
+    const tables=Array.from(realtimeChangedTables);realtimeChangedTables=new Set();
+    if(!dirtyEval&&!syncBusy&&tables.length)pullTables(tables,true).catch(()=>{});
+  },400);
 }
 function startRealtime(){
   if(!sbConfigured()||!SESSION_READY||realtimeChannel)return;
   realtimeChannel=SB.channel("gmp-live");
   REALTIME_TABLES.forEach(t=>{
-    realtimeChannel.on("postgres_changes",{event:"*",schema:"public",table:t},scheduleRealtimePull);
+    realtimeChannel.on("postgres_changes",{event:"*",schema:"public",table:t},()=>scheduleRealtimePull(t));
   });
   realtimeChannel.subscribe(status=>{
     realtimeReady=(status==="SUBSCRIBED");
@@ -2203,7 +2315,8 @@ function renderHistoryFuncDetail(pid,code){
   const auditor=recs.length?recs[0].auditor:"";const dt=recs.length?recs[0].date:"";
   ddetail.innerHTML=`<div class="hint">Khu vực: <b>${esc(a?a.full:code)}</b> · Người chấm: <b>${esc(auditor)}</b> · Ngày: <b>${esc(dt)}</b></div>
     <div style="overflow-x:auto"><table class="data"><tr><th>#</th><th>Chủ đề</th><th>Yêu cầu</th><th class="center">Điểm</th><th>Phát hiện</th><th>Ảnh</th></tr>${rows}</table></div>`;
-  ddetail.onclick=e=>{const v=e.target.closest("img[data-view]");if(v)showLightbox(v.src);};
+  hydrateThumbs(ddetail);
+  ddetail.onclick=e=>{const v=e.target.closest("img[data-view]");if(v)openLightboxFor(v);};
   dcard.scrollIntoView({behavior:"smooth",block:"nearest"});
 }
 /* mail theo khu vực */
