@@ -487,6 +487,35 @@ table.data tbody tr:hover td{background:#faf7f2}
       </div>
       <div class="hint" style="margin-top:8px">Sao lưu gồm: dữ liệu chấm (kèm ảnh), checklist, CAPA, cài đặt.</div>
     </div>
+    <div class="card">
+      <h3 class="sec">🛡️ Data &amp; Egress Control</h3>
+      <div class="hint">Ước tính lưu lượng app tạo ra với Supabase (đồng bộ, Realtime, ảnh Storage) mỗi ngày — <b>không phải</b> số Egress chính xác từ Supabase, chỉ để tự bảo vệ quota. Không bao giờ khoá chấm điểm/CAPA/Excel — chỉ tự giảm tải nền khi gần ngưỡng, xem tab 📖 Hướng dẫn.</div>
+      <div class="row" style="align-items:center;margin-top:10px">
+        <label style="display:flex;align-items:center;gap:6px;font-weight:700"><input type="checkbox" id="egressEnabled"> Protection</label>
+        <span class="badge" id="egressModeBadge" style="margin-left:auto"></span>
+      </div>
+      <div style="margin-top:10px">
+        <div style="height:14px;border-radius:8px;background:#e5e7eb;overflow:hidden"><div id="egressBarFill" style="height:100%;width:0%;background:#15803d;transition:width .3s"></div></div>
+        <div class="muted" id="egressBarText" style="margin-top:4px;font-size:12.5px"></div>
+      </div>
+      <div class="setgrid" style="margin-top:12px">
+        <div class="field"><label>Soft Daily Limit (MB)</label><input id="egressSoft" type="number" min="1" value="100"></div>
+        <div class="field"><label>Hard Daily Limit (MB)</label><input id="egressHard" type="number" min="1" value="200"></div>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn sm gray" data-preset="100,200">100 / 200 MB</button>
+        <button class="btn sm gray" data-preset="150,300">150 / 300 MB</button>
+        <button class="btn sm gray" data-preset="200,500">200 / 500 MB</button>
+        <button class="btn sm gray" data-preset="500,1000">500 / 1000 MB</button>
+      </div>
+      <div class="muted" id="egressExtraInfo" style="margin-top:12px;font-size:12.5px"></div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn sm amber" id="egressExtraBtn">+ Extra MB Today</button>
+        <button class="btn sm" id="egressUnlockBtn">Unlock Today</button>
+      </div>
+      <div class="hint" style="margin-top:10px" id="egressPendingText"></div>
+      <div class="row" style="margin-top:10px"><button class="btn big" id="egressSaveBtn">💾 Lưu cài đặt</button></div>
+    </div>
   </div>
 
   <div class="view" id="view-history">
@@ -681,9 +710,10 @@ function todayISO(){const d=new Date();const z=n=>String(n).padStart(2,"0");retu
 function safeName(s){return String(s||"").replace(/[^\wÀ-ỹ]+/g,"_").replace(/^_+|_+$/g,"")||"area";}
 
 /* ===== settings ===== */
-function defSettings(){return {company:"ILD Coffee Vietnam",defaultAuditor:"",recipients:"binh.dang@ild-coffee.com; QALab2@ild-coffee.com",recipientName:"",subjectTpl:"[GMP & 5S Audit] {scope} - {date}",passPct:88,impPct:80,role:"admin",syncAuto:false,tabOrder:null,areaMails:{},ccAdmin:"binh.dang@ild-coffee.com; QALab2@ild-coffee.com"};}
+function defEgress(){return {enabled:true,softMB:100,hardMB:200,extraMB:0,extraDate:"",unlockToday:false,unlockDate:""};}
+function defSettings(){return {company:"ILD Coffee Vietnam",defaultAuditor:"",recipients:"binh.dang@ild-coffee.com; QALab2@ild-coffee.com",recipientName:"",subjectTpl:"[GMP & 5S Audit] {scope} - {date}",passPct:88,impPct:80,role:"admin",syncAuto:false,tabOrder:null,areaMails:{},ccAdmin:"binh.dang@ild-coffee.com; QALab2@ild-coffee.com",egress:defEgress()};}
 let SET=loadSettings();
-function loadSettings(){let s=defSettings();try{const j=JSON.parse(localStorage.getItem(LS_SET));if(j)s=Object.assign(s,j);}catch(e){}if(!s.recipients)s.recipients=defSettings().recipients;return s;}
+function loadSettings(){let s=defSettings();try{const j=JSON.parse(localStorage.getItem(LS_SET));if(j)s=Object.assign(s,j);}catch(e){}if(!s.recipients)s.recipients=defSettings().recipients;s.egress=Object.assign(defEgress(),s.egress||{});return s;}
 function saveSettings(){localStorage.setItem(LS_SET,JSON.stringify(SET));}
 function passT(){return (Number(SET.passPct)||88)/100;}
 function impT(){return (Number(SET.impPct)||80)/100;}
@@ -1017,6 +1047,10 @@ async function resolveImgUrl(im){
     const {data,error}=await SB.storage.from("gmp-mediasave").createSignedUrl(im.path,3600);
     if(error||!data)return "";
     imgUrlCache.set(im.path,{url:data.signedUrl,exp:now+3600*1000});
+    // Ước tính: lần đầu resolve = trình duyệt sẽ tự tải ảnh này qua <img src>, cộng dồn vào
+    // bộ đếm traffic (không đo được byte thật vì browser tự fetch, ước tính theo dung lượng
+    // lúc nén/upload của đúng ảnh này, hoặc trung bình động nếu ảnh cũ chưa có im.bytes).
+    addTraffic(im.bytes||egressImgAvgBytes);
     return data.signedUrl;
   }catch(e){return "";}
 }
@@ -1071,21 +1105,31 @@ async function attachImage(file,period,code){
   const im=await fileToImg(file);
   period=period||activePeriodId();code=code||"";
   im.createdAt=new Date().toISOString();im.period=period;im.code=code;
-  const key=period+"|"+code;mediaSeq[key]=(mediaSeq[key]||0)+1;
-  const bk=await backupImageToMedia(period,code,im.data,mediaSeq[key]);
+  const key=period+"|"+code;const seq=mediaSeq[key]=(mediaSeq[key]||0)+1;im.seq=seq;
+  const bk=await backupImageToMedia(period,code,im.data,seq);
   im.backupStatus=bk.status;im.backupPath=bk.path||"";
   if(bk.status==="none"&&mediaDirHandle&&!attachImage._warned){attachImage._warned=true;toast("⚠️ Ảnh đã lưu trong app — chưa backup được ra folder Mediasave (kiểm tra quyền truy cập thư mục)");}
+  const blob=dataUrlToBlob(im.data);im.bytes=blob.size;
   // Upload lên Storage đúng BẢN ĐÃ NÉN (im.data, canvas 1280px/q0.72) — không upload file gốc.
   // File gốc từ camera điện thoại có thể vài MB; mọi lượt xem thumbnail/lightbox và xuất Excel
   // sau này đều tải lại đúng file trong Storage, nên upload bản gốc sẽ khiến egress lúc XEM ảnh
   // còn nặng hơn cả base64 cũ. Bản nén đã đủ dùng cho xem/in báo cáo, giữ đúng kích thước như
   // bản offline trước đây.
-  const path=await uploadImageToStorage(dataUrlToBlob(im.data),period,code,mediaSeq[key],file.name);
+  // Ở chế độ 🔴 Protection: cố tình KHÔNG gọi Storage — giữ ảnh cục bộ, không mất evidence,
+  // đưa vào hàng đợi media_upload để tự upload lại khi hết Protection (xem resumePendingMediaUploads()).
+  const path=(updateEgressMode()==="protection")?null:await uploadImageToStorage(blob,period,code,seq,file.name);
   // Upload Storage thành công -> chỉ giữ path, KHÔNG nhúng base64 vào bản ghi (đây là thứ bị
-  // tải lại mỗi lần đồng bộ/pull — bỏ nó khỏi DB là điểm giảm egress lớn nhất). Offline/lỗi mạng
-  // -> giữ nguyên base64 như trước đây, không mất ảnh, không chặn luồng chấm điểm.
-  if(path){im.path=path;delete im.data;}
+  // tải lại mỗi lần đồng bộ/pull — bỏ nó khỏi DB là điểm giảm egress lớn nhất). Offline/lỗi mạng/
+  // Protection -> giữ nguyên base64 như trước đây (không mất ảnh, không chặn luồng chấm điểm),
+  // đồng thời xếp hàng để tự thử upload lại sau (KHÔNG tự retry liên tục — chỉ khi có trigger rõ ràng).
+  if(path){im.path=path;delete im.data;addTraffic(blob.size);egressImgAvgBytes=egressImgAvgBytes*0.7+blob.size*0.3;}
+  else{im.pendingUpload=true;enqueueMediaUpload(period,code,seq,im.data,file.name);}
   return im;
+}
+async function enqueueMediaUpload(period,code,seq,dataUrl,origName){
+  const id=period+"|"+code+"|"+seq;
+  await pendPut({key:pendKey("media_upload",id),kind:"media_upload",id,payload:{period,code,seq,dataUrl,origName},at:Date.now()});
+  updateCloudChip();
 }
 async function uploadImageToStorage(blob,period,code,seq,origName){
   if(!sbConfigured()||!SESSION_READY||!navigator.onLine)return null;
@@ -1285,6 +1329,7 @@ function fullReportName(periodVal){
   return label+".xlsx";
 }
 async function exportFullReport(){
+  if(!confirmProtectionExport(recordsForExport()))return;
   try{toast("Đang tạo báo cáo Excel tổng hợp…");
     const periodVal=($("#reportPeriod")&&$("#reportPeriod").value)||currentMonthStr();
     const blob=await buildFullReportBlob();
@@ -1394,6 +1439,7 @@ function exportCapaCsv(){
   saveOut(new Blob([lines.join("\r\n")],{type:"text/csv"}),"GMP_CAPA_"+todayISO()+".csv");
 }
 async function exportCapaXlsx(){
+  if(!confirmProtectionExport(capaRowsForExport().map(o=>o.r)))return;
   try{toast("Đang tạo Excel CAPA…");
     const list=capaRowsForExport();
     const wb=new ExcelJS.Workbook();const cw=wb.addWorksheet("CAPA");
@@ -1436,6 +1482,17 @@ async function imgRawB64(im){
   }catch(e){return null;}
 }
 function recordsForExport(code){if(code)return latestByArea(code);let all=[];CHK.forEach(a=>{all=all.concat(latestByArea(a.code));});return all;}
+function countStorageImages(records){let n=0;for(const r of records){for(const im of (r.images||[]))if(im&&im.path&&!im.data)n++;}return n;}
+// Không chặn cứng xuất Excel khi 🔴 Protection (điều đó nằm ngoài phạm vi tính năng: Excel/CSV/
+// PNG/.eml local KHÔNG bao giờ bị khoá) — chỉ hỏi xác nhận vì lượt xuất này sẽ THỰC SỰ tải lại
+// ảnh từ Supabase Storage (khác các xuất khác chỉ đọc dữ liệu local).
+function confirmProtectionExport(records){
+  if(updateEgressMode()!=="protection")return true;
+  const n=countStorageImages(records);
+  if(!n)return true;
+  const estMB=Math.max(0.1,n*egressImgAvgBytes/1e6).toFixed(1);
+  return confirm("Đang ở chế độ 🔴 Protection — xuất Excel này sẽ tải lại "+n+" ảnh từ Supabase Storage (ước tính thêm ~"+estMB+" MB egress).\n\nVẫn tiếp tục?");
+}
 async function buildWorkbookBlob(code){
   if(typeof ExcelJS==="undefined")throw new Error("Thư viện Excel chưa tải");
   const recs=recordsForExport(code);const areas=code?CHK.filter(a=>a.code===code):CHK;
@@ -1473,7 +1530,9 @@ async function buildWorkbookBlob(code){
   return new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
 }
 function xlsxName(code){return code?("GMP_"+safeName(code)+"_"+todayISO()+".xlsx"):("GMP_TongHop_"+todayISO()+".xlsx");}
-async function exportExcel(code){try{toast("Đang tạo file Excel…");const blob=await buildWorkbookBlob(code);
+async function exportExcel(code){
+  if(!confirmProtectionExport(recordsForExport(code)))return;
+  try{toast("Đang tạo file Excel…");const blob=await buildWorkbookBlob(code);
   await saveOut(blob,xlsxName(code));toast("Đã xuất Excel "+(code?("khu "+code):"tổng hợp")+" ✓");}catch(e){toast("Lỗi xuất Excel: "+e.message);}}
 
 function bufToB64(buf){const bytes=new Uint8Array(buf);let bin="";for(let i=0;i<bytes.length;i+=0x8000)bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000));return btoa(bin);}
@@ -1703,6 +1762,64 @@ function renderSettings(){
   $("#setDirName").textContent=exportDir?(exportDir.name||"đã chọn"):"— (mặc định: tải về Downloads)";
   const mdn=$("#setMediaDirName");if(mdn)mdn.textContent=mediaDirHandle?"✅ Đã chọn — ảnh sẽ tự backup ra Mediasave/YYYY-MM/":"— chưa chọn (ảnh vẫn lưu trong app)";
   $("#subInfo").textContent=(SET.company||"")+" · Thang điểm 0/1/2 · ĐẠT ≥ "+SET.passPct+"%";
+  renderEgressCard();
+}
+/* ===== 🛡️ Data & Egress Control: card trong tab Cài đặt ===== */
+function renderEgressCard(nMediaKnown){
+  const bar=$("#egressBarFill");if(!bar)return; // tab chưa render lần nào (VD trước khi vào Cài đặt)
+  const c=egressCfg();
+  $("#egressEnabled").checked=!!c.enabled;
+  $("#egressSoft").value=c.softMB;$("#egressHard").value=c.hardMB;
+  const mode=computeEgressMode();
+  const totalMB=(egressTodayTotal+egressLocalDeltaBytes)/1e6;
+  const effHardMB=egressEffectiveHardMB();
+  const pct=effHardMB>0?Math.min(100,(totalMB/effHardMB)*100):0;
+  const colorMap={normal:"#15803d",saving:"#b45309",protection:"#b91c1c"};
+  bar.style.width=pct.toFixed(1)+"%";bar.style.background=colorMap[mode];
+  $("#egressBarText").textContent=totalMB.toFixed(1)+" MB / "+effHardMB.toFixed(0)+" MB (ước tính)";
+  const badge=$("#egressModeBadge");badge.textContent=egressModeLabel(mode);
+  badge.className="badge "+(mode==="protection"?"b-fail":(mode==="saving"?"b-imp":"b-pass"));
+  const today=todayISO();
+  const extraMB=(c.extraDate===today)?(Number(c.extraMB)||0):0;
+  const unlocked=egressUnlocked();
+  $("#egressExtraInfo").textContent="Extra Today: +"+extraMB+" MB"+(extraMB?"":" (hết hạn — chỉ áp dụng trong ngày đặt)")+" · Effective Limit: "+effHardMB.toFixed(0)+" MB"+(unlocked?" · 🔓 Đã Unlock Today":"");
+  const ub=$("#egressUnlockBtn");if(ub)ub.textContent=unlocked?"🔒 Khoá lại (huỷ Unlock Today)":"🔓 Unlock Today";
+  if(nMediaKnown!=null){
+    $("#egressPendingText").textContent=nMediaKnown?("📷 "+nMediaKnown+" ảnh đang chờ upload lại Storage (giữ tạm cục bộ, tự thử lại khi hết Protection/tăng quota).") : "📷 Không có ảnh nào đang chờ upload.";
+  }
+}
+function egressValidateInputs(){
+  const soft=Number($("#egressSoft").value),hard=Number($("#egressHard").value);
+  if(!(soft>0)){toast("Soft Daily Limit phải > 0");return null;}
+  if(!(hard>0)){toast("Hard Daily Limit phải > 0");return null;}
+  if(!(soft<hard)){toast("Soft Daily Limit phải nhỏ hơn Hard Daily Limit");return null;}
+  return {soft,hard};
+}
+function bindEgressCard(){
+  $$('#view-settings [data-preset]').forEach(b=>{
+    b.onclick=()=>{const [s,h]=b.dataset.preset.split(",");$("#egressSoft").value=s;$("#egressHard").value=h;};
+  });
+  $("#egressSaveBtn").onclick=()=>{
+    if(!isAdmin())return;
+    const v=egressValidateInputs();if(!v)return;
+    const c=egressCfg();
+    SET.egress=Object.assign({},c,{enabled:$("#egressEnabled").checked,softMB:v.soft,hardMB:v.hard});
+    saveSettings();updateEgressMode();renderEgressCard();toast("Đã lưu Data & Egress Control");
+  };
+  $("#egressExtraBtn").onclick=()=>{
+    if(!isAdmin())return;
+    const n=Number(prompt("Extra MB cho hôm nay (chỉ có hiệu lực trong ngày hôm nay):","100"));
+    if(!n||n<=0)return;
+    const c=egressCfg();SET.egress=Object.assign({},c,{extraMB:n,extraDate:todayISO()});
+    saveSettings();updateEgressMode();renderEgressCard();toast("Đã thêm +"+n+" MB Extra Today");
+  };
+  $("#egressUnlockBtn").onclick=()=>{
+    if(!isAdmin())return;
+    const c=egressCfg();const unlocking=!egressUnlocked();
+    SET.egress=Object.assign({},c,{unlockToday:unlocking,unlockDate:unlocking?todayISO():c.unlockDate});
+    saveSettings();updateEgressMode();renderEgressCard();
+    toast(unlocking?"Đã Unlock Today":"Đã khoá lại Hard Limit cho hôm nay");
+  };
 }
 function bindSettings(){
   const upd=(id,key,num)=>{$(id).oninput=()=>{SET[key]=num?Number($(id).value):$(id).value;saveSettings();$("#subjPreview").textContent=mailSubject(null);$("#subInfo").textContent=(SET.company||"")+" · Thang điểm 0/1/2 · ĐẠT ≥ "+SET.passPct+"%";if(num)renderAll();};};
@@ -1722,7 +1839,7 @@ async function restoreJson(file){
   if(!isAdmin()){toast("Chỉ Admin mới được Restore dữ liệu");return;}
   try{const d=JSON.parse(await file.text());
     if(!confirm("⚠️ RESTORE sẽ GHI ĐÈ toàn bộ dữ liệu hiện tại (điểm, kỳ, CAPA, checklist, cài đặt) bằng dữ liệu trong file \""+(file.name||"")+"\".\n\nDữ liệu hiện tại chưa sao lưu sẽ MẤT. Không thể hoàn tác.\n\nBạn chắc chắn muốn tiếp tục?"))return;
-    if(d.checklist){CHK=d.checklist;sortCHK();saveChk();}if(d.capa){CAPA=d.capa;saveCapa();}if(d.settings){SET=Object.assign(defSettings(),d.settings);saveSettings();}
+    if(d.checklist){CHK=d.checklist;sortCHK();saveChk();}if(d.capa){CAPA=d.capa;saveCapa();}if(d.settings){SET=Object.assign(defSettings(),d.settings);SET.egress=Object.assign(defEgress(),SET.egress||{});saveSettings();}
     if(d.records){await dbClear();for(const r of d.records)await dbPut(r);await reloadRecords();}
     if(Array.isArray(d.periods)){await perClear();for(const p of d.periods)await perPut(p);await reloadPeriods();}
     if(Array.isArray(d.submissions)){await subClear();for(const s of d.submissions)await subPut(s);await reloadSubs();}
@@ -1903,23 +2020,31 @@ function updateCloudChip(){
   if(!sbConfigured()||!SESSION_READY){c.style.display="none";return;}
   c.style.display="flex";
   const b=c.querySelector("b");
+  const mode=updateEgressMode();const modeSuffix=" • "+egressModeLabel(mode);
   if(!navigator.onLine){b.textContent="Mất mạng — giữ bản chờ";c.classList.add("warn");}
   else if(syncBusy){b.textContent="Đang đồng bộ…";c.classList.remove("warn");}
-  else if(realtimeReady){b.textContent="⚡ Realtime";c.classList.remove("warn");}
-  else{b.textContent="Đã đồng bộ";c.classList.remove("warn");}
-  const st=$("#syncStatus");if(!st)return;
+  else if(realtimeReady){b.textContent="⚡ Realtime"+modeSuffix;c.classList.toggle("warn",mode==="protection");}
+  else{b.textContent="Đã đồng bộ"+modeSuffix;c.classList.toggle("warn",mode==="protection");}
+  const st=$("#syncStatus");
   pendAll().then(items=>{
-    if(!navigator.onLine)st.textContent="⚠️ Mất mạng — "+items.length+" thay đổi đang chờ, sẽ tự gửi khi có mạng lại.";
-    else if(items.length)st.textContent="🔄 Đang gửi "+items.length+" thay đổi…";
-    else if(realtimeReady)st.textContent="⚡ Đồng bộ realtime — dữ liệu cập nhật gần như ngay lập tức, không cần chờ.";
-    else st.textContent="✅ Đã đồng bộ với máy chủ lúc "+new Date().toLocaleTimeString("vi-VN")+" (đang dùng vòng kiểm tra 30 giây — chưa kết nối được realtime)";
+    const nMedia=items.filter(it=>it.kind==="media_upload").length;
+    const mediaSuffix=nMedia?(" • 📷 "+nMedia+" pending"):"";
+    if(st){
+      if(!navigator.onLine)st.textContent="⚠️ Mất mạng — "+items.length+" thay đổi đang chờ, sẽ tự gửi khi có mạng lại."+mediaSuffix;
+      else if(items.length)st.textContent="🔄 Đang gửi "+items.length+" thay đổi…"+mediaSuffix;
+      else if(realtimeReady)st.textContent="⚡ Đồng bộ realtime — dữ liệu cập nhật gần như ngay lập tức, không cần chờ."+mediaSuffix;
+      else st.textContent="✅ Đã đồng bộ với máy chủ lúc "+new Date().toLocaleTimeString("vi-VN")+" (đang dùng vòng kiểm tra 30 giây — chưa kết nối được realtime)"+mediaSuffix;
+    }
+    renderEgressCard(nMedia);
   });
 }
 async function flushPending(){
   if(!sbConfigured()||!SESSION_READY||syncBusy)return;
   syncBusy=true;updateCloudChip();
   try{
-    const items=await pendAll();
+    // kind "media_upload" KHÔNG đi qua vòng này — vòng này chạy liên tục (debounce 1.5s) nên
+    // không được đụng Storage ở đây, đặc biệt lúc 🔴 Protection. Xem resumePendingMediaUploads().
+    const items=(await pendAll()).filter(it=>it.kind!=="media_upload");
     // Gửi song song theo lô nhỏ thay vì tuần tự từng item — giảm độ trễ khi có nhiều thay đổi
     // chờ gửi (VD sau khi offline lâu), không đổi số byte truyền đi, không đổi luật giữ-lại-khi-lỗi.
     const CH_SIZE=5;
@@ -1933,6 +2058,7 @@ async function flushPending(){
 }
 async function pushOne(it){
   const p=it.payload;
+  addTraffic(JSON.stringify(p||{}).length);
   if(it.kind==="record"){const {error}=await SB.rpc("gmp_save_record",{p});if(error)throw error;}
   else if(it.kind==="record_del"){const {error}=await SB.rpc("gmp_delete_record",{p_id:p.id});if(error)throw error;}
   else if(it.kind==="period_create"){const {error}=await SB.rpc("gmp_create_period",{p_id:p.id,p_functions:p.functions});if(error)throw error;}
@@ -1975,13 +2101,13 @@ async function fetchTableRows(table,force){
     const since=getSyncCursor(table);
     if(since){
       const r=await SB.from(table).select("*").gt("updated_at",since).order("updated_at",{ascending:true});
-      if(!r.error){bumpCursorFromRows(table,r.data);return r;}
+      if(!r.error){bumpCursorFromRows(table,r.data);addTraffic(JSON.stringify(r.data||[]).length);return r;}
       if(isMissingUpdatedAtError(r.error))deltaUnsupported.add(table);
       // lỗi khác (mạng/RLS…) -> thử lại bằng full-select bên dưới, không đánh dấu unsupported
     }
   }
   const r=await SB.from(table).select("*");
-  if(!r.error)bumpCursorFromRows(table,r.data);
+  if(!r.error){bumpCursorFromRows(table,r.data);addTraffic(JSON.stringify(r.data||[]).length);}
   return r;
 }
 /* pullTables: chỉ kéo đúng các bảng trong "tables" thay vì luôn kéo cả 7 bảng —
@@ -2007,11 +2133,13 @@ async function pullTables(tables,silent,force){
     const results=await Promise.all(keys.map(k=>jobs[k]));
     const out={};keys.forEach((k,i)=>out[k]=results[i]);
     const {rp,rs,rr,rc,rk,rt,ra}=out;
+    for(const k of ["rc","rk","rt","ra"]){if(out[k]&&out[k].data)addTraffic(JSON.stringify(out[k].data).length);}
+    pullEgressDaily().catch(()=>{}); // throttle nội bộ ~20s, không thêm request mỗi lần pullTables chạy
     if(rp&&rp.data){for(const row of rp.data){if(!pendKeys.has(pendKey("period_create",row.id))&&!pendKeys.has(pendKey("period_lock",row.id)))await perPut(mapServerPeriod(row));}await reloadPeriods();}
     if(rs&&rs.data){for(const row of rs.data){if(resetPeriods.has(row.period))continue;if(!pendKeys.has(pendKey("submission",row.id)))await subPut(mapServerSub(row));}await reloadSubs();}
     if(rr&&rr.data){for(const row of rr.data){if(resetPeriods.has(row.period))continue;if(!pendKeys.has(pendKey("record",row.id))&&!pendKeys.has(pendKey("record_del",row.id)))await dbPut(mapServerRecord(row));}await reloadRecords();}
     if(rk&&rk.data&&rk.data.data&&!pendKeys.has(pendKey("checklist","current"))&&!chkDirty){CHK=rk.data.data;sortCHK();try{localStorage.setItem(LS_CHK,JSON.stringify(CHK));}catch(e){}fillAreaSelects();}
-    if(rt&&rt.data&&rt.data.data&&!pendKeys.has(pendKey("settings","current"))){SET=Object.assign(defSettings(),rt.data.data);try{localStorage.setItem(LS_SET,JSON.stringify(SET));}catch(e){}applyTabOrder();}
+    if(rt&&rt.data&&rt.data.data&&!pendKeys.has(pendKey("settings","current"))){SET=Object.assign(defSettings(),rt.data.data);SET.egress=Object.assign(defEgress(),SET.egress||{});try{localStorage.setItem(LS_SET,JSON.stringify(SET));}catch(e){}applyTabOrder();}
     if(rc&&rc.data&&!pendKeys.has(pendKey("capa","current"))){CAPA=rc.data.data||{};try{localStorage.setItem(LS_CAPA,JSON.stringify(CAPA));}catch(e){}}
     if(ra&&ra.data&&!pendKeys.has(pendKey("auditors","current"))){AUDITORS=ra.data.data||[];try{localStorage.setItem(LS_AUD,JSON.stringify(AUDITORS));}catch(e){}renderAuditorsAdmin();}
     renderAll();if($("#inArea")&&$("#inArea").value)loadAreaForm($("#inArea").value);
@@ -2027,12 +2155,25 @@ function startPoller(){
     if(document.hidden)return; // tab nền: không tốn egress cho tới khi người dùng quay lại
     if(dirtyEval||syncBusy||!navigator.onLine)return;
     pollTick++;
-    // Realtime đang sống (⚡) thì vòng 30s chỉ còn là lưới an toàn dự phòng —
-    // giãn ra ~2 phút/lần thay vì kéo lại cả 7 bảng mỗi 30s một cách dư thừa.
-    if(realtimeReady&&(pollTick%4!==0))return;
+    // Piggyback đẩy traffic đo được lên bộ đếm chung + tính lại mode ngay tại đây — KHÔNG tạo
+    // timer riêng để "kiểm tra quota", chỉ tận dụng đúng tick 30s có sẵn của vòng poll này.
+    pushEgressDelta().catch(()=>{});
+    const mode=updateEgressMode();
+    // Realtime/manual sync/flush hàng đợi KHÔNG bị đụng ở đây — chỉ giãn/co lại đúng vòng an
+    // toàn dự phòng 30s này theo mode Data & Egress Control (xem HANDOFF.md mục 12.12).
+    if(mode==="protection"){
+      if(realtimeReady)return; // Realtime khoẻ là đủ, khỏi cần lưới an toàn nền nữa
+      if(pollTick%10!==0)return; // Realtime cũng mất -> vẫn còn 1 lưới an toàn rất thưa (~5 phút)
+    }else if(mode==="saving"){
+      if(realtimeReady&&(pollTick%10!==0))return; // ~5 phút
+      if(!realtimeReady&&(pollTick%4!==0))return; // ~2 phút
+    }else{
+      // 🟢 Normal: giữ đúng hành vi gốc trước khi có Data & Egress Control.
+      if(realtimeReady&&(pollTick%4!==0))return; // ~2 phút
+    }
     // Đa số các lượt: dùng delta (chỉ bảng có updated_at mới lọc bớt, các bảng khác tự full-select).
-    // Cứ ~20 lượt (khoảng 10-40 phút tuỳ có Realtime hay không) full-select 1 lần để tự phục hồi
-    // nếu delta bị lệch vì lý do nào đó (đồng hồ máy chủ, cột chưa migrate xong…).
+    // Cứ ~20 lượt full-select 1 lần để tự phục hồi nếu delta bị lệch (đồng hồ máy chủ, cột chưa
+    // migrate xong…) — khoảng thời gian thực tế giữa 2 lần full-select co giãn theo mode ở trên.
     const forceFull=(pollTick%20===0);
     pullTables(ALL_SYNC_TABLES,true,forceFull).catch(()=>{});
   },30000);
@@ -2063,7 +2204,9 @@ function startRealtime(){
   if(!sbConfigured()||!SESSION_READY||realtimeChannel)return;
   realtimeChannel=SB.channel("gmp-live");
   REALTIME_TABLES.forEach(t=>{
-    realtimeChannel.on("postgres_changes",{event:"*",schema:"public",table:t},()=>scheduleRealtimePull(t));
+    realtimeChannel.on("postgres_changes",{event:"*",schema:"public",table:t},(payload)=>{
+      addTraffic(JSON.stringify(payload||{}).length);scheduleRealtimePull(t);
+    });
   });
   realtimeChannel.subscribe(status=>{
     realtimeReady=(status==="SUBSCRIBED");
@@ -2085,6 +2228,82 @@ function installSyncWraps(){
   saveSettings=function(){_saveSettings();if(SESSION_READY&&isAdmin())enqueueSync("settings","current",SET);};
   saveAuditors=function(){_saveAuditors();if(SESSION_READY&&isAdmin())enqueueSync("auditors","current",AUDITORS);};
 }
+
+/* ===== Data & Egress Control: Admin đặt Soft/Hard limit (mặc định 100/200 MB), app tự
+   ƯỚC TÍNH traffic (không phải số Egress chính xác của Supabase) và giảm tải nền khi gần
+   ngưỡng — không bao giờ khoá nghiệp vụ chấm điểm/CAPA, không làm mất ảnh evidence.
+   Chi tiết kiến trúc: xem HANDOFF.md mục 12.12. */
+let egressMode="normal",egressLastMode="normal";
+let egressLocalDeltaBytes=0,egressTodayTotal=0,egressImgAvgBytes=150000,lastEgressPullAt=0;
+function egressCfg(){return SET.egress||defEgress();}
+function addTraffic(n){if(n>0)egressLocalDeltaBytes+=n;}
+function egressEffectiveHardMB(){
+  const c=egressCfg();
+  return (Number(c.hardMB)||200)+((c.extraDate===todayISO())?(Number(c.extraMB)||0):0);
+}
+function egressUnlocked(){const c=egressCfg();return !!(c.unlockToday&&c.unlockDate===todayISO());}
+function computeEgressMode(){
+  const c=egressCfg();
+  if(!c.enabled)return "normal";
+  const totalBytes=egressTodayTotal+egressLocalDeltaBytes;
+  const hardBytes=egressEffectiveHardMB()*1e6,softBytes=(Number(c.softMB)||100)*1e6;
+  if(totalBytes>=hardBytes&&!egressUnlocked())return "protection";
+  if(totalBytes>=softBytes)return "saving";
+  return "normal";
+}
+function egressModeLabel(m){return m==="protection"?"🔴 Protection":(m==="saving"?"🟠 Data Saving":"🟢 Normal");}
+// Gọi lại mode mỗi khi có dịp (chip cloud, tick poll, lúc đính ảnh…) — tự resume hàng đợi ảnh
+// chờ upload ngay khi thoát Protection (mở khoá/tăng quota/sang ngày mới), không cần chờ trigger khác.
+function updateEgressMode(){
+  const prev=egressLastMode;egressMode=computeEgressMode();egressLastMode=egressMode;
+  if(prev==="protection"&&egressMode!=="protection")resumePendingMediaUploads().catch(()=>{});
+  return egressMode;
+}
+async function pushEgressDelta(){
+  if(!sbConfigured()||!SESSION_READY||egressLocalDeltaBytes<=0)return;
+  const bytes=Math.round(egressLocalDeltaBytes);egressLocalDeltaBytes=0;
+  try{
+    const {error}=await SB.rpc("gmp_bump_egress_daily",{p_date:todayISO(),p_bytes:bytes});
+    if(error)throw error;
+    egressTodayTotal+=bytes; // ước tính tạm, tự chỉnh lại đúng khi pullEgressDaily() đọc lại từ server
+  }catch(e){egressLocalDeltaBytes+=bytes;/* thử lại ở lượt sau, không mất số đã đo được */}
+}
+async function pullEgressDaily(force){
+  if(!sbConfigured()||!SESSION_READY)return;
+  const now=Date.now();if(!force&&now-lastEgressPullAt<20000)return; // throttle nội bộ, không thêm timer
+  lastEgressPullAt=now;
+  try{
+    const {data,error}=await SB.from("gmp_egress_daily").select("total_bytes").eq("id",todayISO()).maybeSingle();
+    if(!error&&data)egressTodayTotal=Number(data.total_bytes)||0;
+  }catch(e){}
+}
+// Upload lại các ảnh bị hoãn (Protection hoặc lỗi mạng lúc đính ảnh) — CHỈ chạy khi có trigger
+// rõ ràng (mở khoá/tăng quota/sang ngày mới/thoát Protection), KHÔNG tự retry liên tục.
+async function resumePendingMediaUploads(){
+  if(!sbConfigured()||!SESSION_READY)return;
+  const items=(await pendAll()).filter(it=>it.kind==="media_upload");
+  if(!items.length)return;
+  const CH=2;
+  for(let i=0;i<items.length;i+=CH){
+    await Promise.all(items.slice(i,i+CH).map(async it=>{
+      const p=it.payload;
+      try{
+        const blob=dataUrlToBlob(p.dataUrl);
+        const path=await uploadImageToStorage(blob,p.period,p.code,p.seq,p.origName);
+        if(!path)return; // vẫn giữ trong hàng đợi, thử lại ở lượt trigger sau
+        addTraffic(blob.size);egressImgAvgBytes=egressImgAvgBytes*0.7+blob.size*0.3;
+        for(const rec of RECORDS){
+          if(!rec.images||!rec.images.length)continue;
+          const im=rec.images.find(x=>x&&x.period===p.period&&x.code===p.code&&x.seq===p.seq&&!x.path);
+          if(im){im.path=path;delete im.data;delete im.pendingUpload;await dbPut(rec);break;}
+        }
+        await pendDel(it.key);
+      }catch(e){/* giữ trong hàng đợi — lỗi mạng/quyền sẽ thử lại ở lượt trigger sau */}
+    }));
+  }
+  updateCloudChip();
+}
+
 /* ===== PHÊ DUYỆT, MAIL THEO KHU, THỨ TỰ TAB ===== */
 function periodLabel(id){const p=(id||"").split("-");if(p.length!==2)return id||todayISO();return "Tháng "+p[1]+"/"+p[0];}
 function currentMonthStr(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");}
@@ -2381,7 +2600,7 @@ async function boot(){
     const ok=(await h.queryPermission({mode:"readwrite"}))==="granted";setFileStatus(ok,h.name);}}catch(e){}
   try{const dh=await metaGet("exportDir");if(dh)exportDir=dh;}catch(e){}
   $("#subInfo").textContent=(SET.company||"")+" · Thang điểm 0/1/2 · ĐẠT ≥ "+SET.passPct+"%";
-  renderAll();bindSettings();
+  renderAll();bindSettings();bindEgressCard();
   $$(".tab").forEach(t=>t.onclick=()=>switchTab(t.dataset.tab));
   $("#inArea").onchange=e=>{loadAreaForm(e.target.value);updateLive();};
   $("#editArea").onchange=renderEdit;

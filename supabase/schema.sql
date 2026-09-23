@@ -103,6 +103,17 @@ create table if not exists public.gmp_auditors (
   updated_by uuid references auth.users(id)
 );
 
+-- ===== 7c. Đếm lưu lượng ước tính theo ngày (Data & Egress Control) =====
+-- 1 dòng/ngày (id = "YYYY-MM-DD"), tăng dồn qua gmp_bump_egress_daily() — dùng để
+-- Admin theo dõi/khống chế traffic ước tính trong app, KHÔNG phải số Egress thật
+-- của Supabase. Khoá theo ngày nên "reset mỗi ngày" tự xảy ra (ngày mới = dòng
+-- mới), không cần cron/reset riêng.
+create table if not exists public.gmp_egress_daily (
+  id text primary key, -- "YYYY-MM-DD" theo giờ local của thiết bị đang cộng dồn
+  total_bytes bigint not null default 0,
+  updated_at timestamptz not null default now()
+);
+
 -- ===== 8. Nhật ký thao tác (server tự ghi) =====
 create table if not exists public.gmp_audit_log (
   id bigserial primary key,
@@ -173,6 +184,7 @@ alter table public.gmp_checklist enable row level security;
 alter table public.gmp_settings enable row level security;
 alter table public.gmp_auditors enable row level security;
 alter table public.gmp_audit_log enable row level security;
+alter table public.gmp_egress_daily enable row level security;
 
 drop policy if exists gmp_members_select on public.gmp_members;
 -- Chặt hơn các bảng khác: gmp_members chứa email Admin thật, không cho khách ẩn
@@ -208,6 +220,9 @@ create policy gmp_auditors_select on public.gmp_auditors for select using (publi
 
 drop policy if exists gmp_audit_log_select on public.gmp_audit_log;
 create policy gmp_audit_log_select on public.gmp_audit_log for select using (public.gmp_is_admin());
+
+drop policy if exists gmp_egress_daily_select on public.gmp_egress_daily;
+create policy gmp_egress_daily_select on public.gmp_egress_daily for select using (public.gmp_is_member());
 
 -- Không có policy insert/update/delete nào cho role authenticated/anon trên các
 -- bảng trên — cố tình để trống, ép mọi client phải đi qua các hàm RPC bên dưới.
@@ -475,6 +490,19 @@ returns boolean language sql stable security definer set search_path = public as
       and e->>'employee_code' = p_code
   );
 $$;
+
+-- Cộng dồn traffic ước tính của 1 ngày — gọi bởi BẤT KỲ phiên nào (User thường
+-- cũng tạo traffic), không chỉ Admin. Cố tình KHÔNG ghi gmp_audit_log ở đây: RPC
+-- này được gọi định kỳ (piggyback theo vòng poll có sẵn), ghi audit log mỗi lần
+-- gọi sẽ tự làm phình thêm egress — phản tác dụng với mục đích của chính nó.
+create or replace function public.gmp_bump_egress_daily(p_date text, p_bytes bigint)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.gmp_is_member() then raise exception 'Cần đăng nhập'; end if;
+  if p_bytes is null or p_bytes<=0 then return; end if;
+  insert into public.gmp_egress_daily(id,total_bytes,updated_at) values(p_date,p_bytes,now())
+  on conflict(id) do update set total_bytes=public.gmp_egress_daily.total_bytes+excluded.total_bytes, updated_at=now();
+end; $$;
 
 -- ============================================================================
 -- Storage: bucket ảnh gốc, private, chỉ member chưa bị vô hiệu hoá mới đọc/ghi

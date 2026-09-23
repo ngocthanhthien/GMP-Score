@@ -37,6 +37,14 @@ Rà lại toàn bộ code sau đợt fix ở mục 0, phát hiện **2 vấn đ�
 - Ảnh cũ (base64 trong DB, hoặc upload trước đợt #5 này) không tự động nén lại — chỉ ảnh MỚI từ giờ mới nhỏ.
 - Sau khi sửa #4/#5, nên theo dõi lại Supabase Dashboard → Usage (Database Egress **và** Storage Egress tách riêng) để xác nhận cải thiện thực tế — #5 giảm Storage Egress mạnh, #4 giảm Database Egress mạnh, không cộng dồn vào cùng 1 con số.
 
+## 0c. Data & Egress Control (2026-09-23) — tính năng CHỦ ĐỘNG, khác 2 đợt audit trên
+
+Hai đợt audit ở mục 0/0b là **thụ động**: tìm và sửa các điểm code tự tốn egress dư thừa. Mục này là tính năng **chủ động**: cho Admin công cụ tự theo dõi/khống chế traffic ngay trong app, không cần chờ audit thêm mỗi khi traffic tăng bất thường (nhiều Auditor cùng lúc, nhiều ảnh...).
+
+Thêm card **🛡️ Data & Egress Control** (tab Cài đặt): Admin đặt Soft/Hard Daily Limit (MB, mặc định 100/200), app tự ước tính traffic và chuyển 🟢 Normal → 🟠 Data Saving → 🔴 Protection, tự giảm tần suất poller nền theo mode — **không đụng** Realtime/sync thủ công/sync-lúc-mở-lại-tab/flush hàng đợi ở bất kỳ mode nào, **không bao giờ khoá** chấm điểm/CAPA/Excel, **không làm mất** ảnh evidence (ảnh chờ upload lại qua hàng đợi `media_upload` khi hết Protection). Chi tiết kiến trúc đầy đủ: xem `HANDOFF.md` mục 12.12.
+
+Khác với mục 0/0b (audit tìm lỗi rồi sửa), mục này không phải "vấn đề" cần trạng thái ✅/❌ theo hàng — ghi nhận ở đây để người đọc `EGRESS_AUDIT.md` biết tính năng chủ động này tồn tại và trỏ sang `HANDOFF.md` 12.12 để xem chi tiết, tránh trùng lặp nội dung giữa 2 file.
+
 ## 1. Tổng quan
 
 **Mức độ: Cao.**
