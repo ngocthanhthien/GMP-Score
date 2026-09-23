@@ -1075,17 +1075,22 @@ async function attachImage(file,period,code){
   const bk=await backupImageToMedia(period,code,im.data,mediaSeq[key]);
   im.backupStatus=bk.status;im.backupPath=bk.path||"";
   if(bk.status==="none"&&mediaDirHandle&&!attachImage._warned){attachImage._warned=true;toast("⚠️ Ảnh đã lưu trong app — chưa backup được ra folder Mediasave (kiểm tra quyền truy cập thư mục)");}
-  const path=await uploadImageToStorage(file,period,code,mediaSeq[key]);
+  // Upload lên Storage đúng BẢN ĐÃ NÉN (im.data, canvas 1280px/q0.72) — không upload file gốc.
+  // File gốc từ camera điện thoại có thể vài MB; mọi lượt xem thumbnail/lightbox và xuất Excel
+  // sau này đều tải lại đúng file trong Storage, nên upload bản gốc sẽ khiến egress lúc XEM ảnh
+  // còn nặng hơn cả base64 cũ. Bản nén đã đủ dùng cho xem/in báo cáo, giữ đúng kích thước như
+  // bản offline trước đây.
+  const path=await uploadImageToStorage(dataUrlToBlob(im.data),period,code,mediaSeq[key],file.name);
   // Upload Storage thành công -> chỉ giữ path, KHÔNG nhúng base64 vào bản ghi (đây là thứ bị
   // tải lại mỗi lần đồng bộ/pull — bỏ nó khỏi DB là điểm giảm egress lớn nhất). Offline/lỗi mạng
   // -> giữ nguyên base64 như trước đây, không mất ảnh, không chặn luồng chấm điểm.
   if(path){im.path=path;delete im.data;}
   return im;
 }
-async function uploadImageToStorage(file,period,code,seq){
+async function uploadImageToStorage(blob,period,code,seq,origName){
   if(!sbConfigured()||!SESSION_READY||!navigator.onLine)return null;
-  const fname="Mediasave/"+period+"/"+safeName(code)+"_"+String(seq).padStart(3,"0")+"_"+Date.now()+"_"+safeName(file.name||"anh.jpg");
-  try{const {error}=await SB.storage.from("gmp-mediasave").upload(fname,file,{upsert:false,contentType:file.type||"image/jpeg",cacheControl:"31536000"});
+  const fname="Mediasave/"+period+"/"+safeName(code)+"_"+String(seq).padStart(3,"0")+"_"+Date.now()+"_"+safeName(origName||"anh.jpg");
+  try{const {error}=await SB.storage.from("gmp-mediasave").upload(fname,blob,{upsert:false,contentType:blob.type||"image/jpeg",cacheControl:"31536000"});
     if(error)throw error;
     return fname;}
   catch(e){return null;/* không chặn lưu record — ảnh vẫn giữ base64 cục bộ, không mất dữ liệu */}
@@ -1394,10 +1399,18 @@ async function exportCapaXlsx(){
     const wb=new ExcelJS.Workbook();const cw=wb.addWorksheet("CAPA");
     hdrStyle(cw.addRow(["#","Khu vực","Chủ đề","Yêu cầu","Điểm","Phân loại","Phát hiện","Bằng chứng","Số ảnh","Hành động khắc phục","Người phụ trách","Hạn","Trạng thái","Ngày đánh giá","Ảnh"]));
     cw.columns=[{width:5},{width:24},{width:18},{width:40},{width:7},{width:14},{width:32},{width:16},{width:7},{width:32},{width:14},{width:13},{width:13},{width:12},{width:30}];
-    list.forEach(o=>{const r=o.r,cp=o.cp;const imgs=r.images||[];
+    for(const o of list){const r=o.r,cp=o.cp;const imgs=r.images||[];
       const row=cw.addRow([o.i,r.code+" — "+r.full,r.cat,r.req,r.score,r.cls,r.finding,r.evidence,imgs.length,cp.action||"",cp.owner||"",cp.due||"",cp.status||"Mở",r.date,""]);
       row.alignment={wrapText:true,vertical:"top"};colorScore(row.getCell(5),r.score);
-      if(imgs.length){row.height=72;imgs.forEach((im,j)=>{try{const id=wb.addImage({base64:b64of(im.data),extension:"jpeg"});cw.addImage(id,{tl:{col:14+j*1.6,row:row.number-1+0.05},ext:{width:90,height:64}});}catch(e){}});}});
+      if(imgs.length){row.height=72;
+        for(const [j,im] of imgs.entries()){
+          try{const b64=await imgRawB64(im);if(!b64)continue;
+            const id=wb.addImage({base64:b64,extension:"jpeg"});
+            cw.addImage(id,{tl:{col:14+j*1.6,row:row.number-1+0.05},ext:{width:90,height:64}});
+          }catch(e){}
+        }
+      }
+    }
     cw.views=[{state:"frozen",ySplit:1}];
     const buf=await wb.xlsx.writeBuffer();
     saveOut(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),"GMP_CAPA_"+todayISO()+".xlsx");
@@ -1907,9 +1920,14 @@ async function flushPending(){
   syncBusy=true;updateCloudChip();
   try{
     const items=await pendAll();
-    for(const it of items){
-      try{await pushOne(it);await pendDel(it.key);}
-      catch(e){/* giữ trong hàng đợi — lỗi mạng sẽ tự thử lại, lỗi quyền/khoá cần người dùng kiểm tra lại thao tác */}
+    // Gửi song song theo lô nhỏ thay vì tuần tự từng item — giảm độ trễ khi có nhiều thay đổi
+    // chờ gửi (VD sau khi offline lâu), không đổi số byte truyền đi, không đổi luật giữ-lại-khi-lỗi.
+    const CH_SIZE=5;
+    for(let i=0;i<items.length;i+=CH_SIZE){
+      await Promise.all(items.slice(i,i+CH_SIZE).map(it=>
+        pushOne(it).then(()=>pendDel(it.key))
+          .catch(()=>{/* giữ trong hàng đợi — lỗi mạng sẽ tự thử lại, lỗi quyền/khoá cần người dùng kiểm tra lại thao tác */})
+      ));
     }
   }finally{syncBusy=false;updateCloudChip();}
 }
@@ -2020,7 +2038,9 @@ function startPoller(){
   },30000);
 }
 document.addEventListener("visibilitychange",()=>{
-  if(!document.hidden&&sbConfigured()&&SESSION_READY&&!dirtyEval&&!syncBusy)pullAll(true).catch(()=>{});
+  // force=false: dùng delta-sync như poller, không ép full-select cả 7 bảng mỗi lần đổi tab —
+  // cursor delta vẫn còn nguyên trong lúc tab ẩn nên không mất dữ liệu, chỉ đỡ tốn egress hơn nhiều.
+  if(!document.hidden&&sbConfigured()&&SESSION_READY&&!dirtyEval&&!syncBusy)pullTables(ALL_SYNC_TABLES,true,false).catch(()=>{});
 });
 async function doSync(silent){await flushPending();await pullAll(silent);}
 function maybeAutoPush(){scheduleFlush();}

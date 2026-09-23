@@ -227,6 +227,10 @@ supabase/
 README - GMP Score Supabase.md  — hướng dẫn cài đặt cho người vận hành (không phải tài liệu kỹ thuật)
 ```
 
+> ⚠️ **Repo này (`C:\Users\BinhDang\Documents\GitHub\GMP-Score`, remote `github.com/ngocthanhthien/GMP-Score`) KHÔNG theo đúng cây thư mục trên** — đây là bản đã publish, dẹt ở gốc: `index.html`/`config.js`/`vendor/supabase.js` nằm thẳng ở root (không có thư mục `ready/`). **Cập nhật 2026-09-23**: `supabase/schema.sql` và `supabase/functions/admin-users/index.ts` **đã được copy vào repo này** (nguồn tại `C:\Apps\GMP_Score_App` vẫn còn, coi là bản lưu trữ cũ — sửa server-side thì sửa ở repo này, KHÔNG sửa bản ở `C:\Apps\GMP_Score_App` nữa để tránh lệch lại). `GMP_Score_App.html` và `README - GMP Score Supabase.md` (bản offline gốc + doc hướng dẫn cài đặt) vẫn CHỈ tồn tại ở `C:\Apps\GMP_Score_App`, chưa đưa vào repo này (không bắt buộc — `GMP_Score_App.html` không publish). Repo này còn có `EGRESS_AUDIT.md` (audit + lịch sử fix hiệu năng/egress, đọc trước khi sửa bất cứ gì liên quan tới đồng bộ/ảnh — xem 12.5) và `supabase/add_updated_at.sql` (chỉ dùng để retrofit project CŨ đã chạy schema.sql trước khi có mục 8b — project mới không cần chạy file này, xem ghi chú đầu file đó).
+>
+> **Project Supabase đang trỏ tới (2026-09-23)**: đã đổi sang project mới **"GMP Score App"** (`https://mnhlddcvbzihhnnirhiz.supabase.co`, `config.js` đã cập nhật anon key mới) — project cũ `thhevdrgbxvyatfvtyrh.supabase.co` không còn dùng. Project mới **chưa chạy schema.sql / chưa deploy Edge Function / chưa bật anonymous sign-in / chưa tạo Admin** — xem checklist việc-cần-làm-tay ở 12.11.
+
 ### 12.2. Chạy & kiểm thử nhanh
 
 Giống mục 2 (script thứ 2 trong `<script>` mới cần đọc/sửa, tránh dòng SEED/ExcelJS khổng lồ), nhưng phục vụ trực tiếp thư mục `ready/`:
@@ -293,12 +297,17 @@ Hàm liên quan: `ensureSession`, `doPickAuditor`, `doLogin`, `afterSignIn`, `do
 
 ### 12.5. Mô hình đồng bộ
 
-Triết lý: **IndexedDB cục bộ vẫn là nguồn cho UI** (như mục 3-4), chỉ phủ thêm 1 lớp mỏng — xem chi tiết kèm code mẫu tổng quát hoá trong skill `supabase-sync-auth-patterns` (đã đóng gói riêng, xem 12.11) nếu cần áp dụng cho app khác. Ở đây tóm tắt đúng bản đã cài trong `ready/index.html`:
+> ⚠️ **Đã nâng cấp đáng kể sau 2 đợt audit Egress** (`EGRESS_AUDIT.md` trong repo này, 2026-09-20 và 2026-09-23) — đọc file đó để có chi tiết/số liệu test trước khi sửa bất cứ gì ở mục này. Tóm tắt kiến trúc HIỆN TẠI (không phải bản gốc lúc mới viết mục 12):
+
+Triết lý: **IndexedDB cục bộ vẫn là nguồn cho UI** (như mục 3-4), chỉ phủ thêm 1 lớp mỏng — xem chi tiết kèm code mẫu tổng quát hoá (bản gốc, chưa có các tối ưu egress bên dưới) trong skill `supabase-sync-auth-patterns` (đã đóng gói riêng, xem 12.11) nếu cần áp dụng cho app khác.
 
 - **`installSyncWraps()`** (gọi 1 lần trong `boot()`, **sau** `seedIfEmpty()` — thứ tự này quan trọng, nếu lắp trước sẽ đẩy nhầm dữ liệu SEED demo lên server thật) — bọc lại `dbPut`/`dbDel`/`saveCapa`/`saveChk`/`saveSettings`/`saveAuditors`, giữ nguyên mọi nơi gọi cũ.
-- **Hàng đợi bản chờ**: store `pending` (IndexedDB), key `kind+":"+id`, debounce 1.5s (`scheduleFlush`/`flushPending`/`pushOne`).
-- **`pullAll(silent)`** — kéo toàn bộ 7 bảng, LUÔN kiểm tra hàng đợi trước khi ghi đè 1 id cục bộ. Gọi từ: `initCloud()` lúc boot, sau đăng nhập/đăng xuất, poller 30s (`startPoller`), và Realtime (bên dưới).
-- **Realtime**: `startRealtime()`/`stopRealtime()`/`scheduleRealtimePull()` — subscribe `postgres_changes` trên 7 bảng, debounce 400ms rồi gọi lại **đúng** `pullAll()` (không patch từng dòng). Poller 30s giữ làm lưới an toàn khi realtime rớt. Bật Realtime phía server qua khối `do $$ ... alter publication supabase_realtime add table ...` cuối `schema.sql` (an toàn chạy lại).
+- **Hàng đợi bản chờ**: store `pending` (IndexedDB), key `kind+":"+id`, debounce 1.5s (`scheduleFlush`/`flushPending`/`pushOne`). `flushPending` gửi **song song theo lô 5** (không còn tuần tự từng item).
+- **`pullTables(tables, silent, force)`** (KHÔNG phải `pullAll` kéo cả 7 bảng như thiết kế ban đầu) — chỉ kéo đúng các bảng trong `tables`; với `gmp_records`/`gmp_periods`/`gmp_submissions`, nếu `force=false` sẽ dùng **delta-sync thật** theo cột `updated_at` (`fetchTableRows`, tự fallback full-select nếu cột chưa tồn tại — xem `supabase/add_updated_at.sql`, mục 12.11 nhắc lại việc cần chạy file này). `pullAll(silent)` giờ chỉ là alias gọi `pullTables(ALL_SYNC_TABLES,silent,true)` — LUÔN kiểm tra hàng đợi trước khi ghi đè 1 id cục bộ, dùng cho lúc boot/đăng nhập/đăng xuất (cần đảm bảo full state đúng mỗi phiên mới).
+- **Realtime**: `startRealtime()`/`scheduleRealtimePull(table)` — subscribe `postgres_changes` trên 7 bảng, debounce 400ms rồi gọi `pullTables()` **chỉ với (các) bảng thực sự vừa đổi** (không phải luôn cả 7 bảng). Bật Realtime phía server qua khối `do $$ ... alter publication supabase_realtime add table ...` cuối `schema.sql` gốc (an toàn chạy lại).
+- **Poller** (`startPoller`) — dừng hẳn khi `document.hidden` (tab nền không tốn egress); khi Realtime đang SUBSCRIBED, giãn ra ~2 phút/lần thay vì 30s (chỉ còn là lưới an toàn); cứ ~20 lượt tự full-select 1 lần để tự phục hồi nếu delta lệch.
+- **`visibilitychange`** (quay lại tab) — gọi `pullTables(ALL_SYNC_TABLES,true,false)` (**`force=false`**, dùng delta — KHÔNG dùng `pullAll(true)`/force=true, đó chính là lỗi egress lớn nhất tìm thấy ở đợt audit 2026-09-23, đã sửa).
+- **Ảnh**: `attachImage` upload lên Storage đúng **bản đã nén cục bộ** (`dataUrlToBlob(im.data)`, canvas 1280px/q0.72), KHÔNG upload file gốc (sửa ở đợt audit 2026-09-23 — trước đó vô tình upload nguyên file gốc, có thể vài-chục MB/ảnh). Hiển thị qua `resolveImgUrl` (signed URL, cache theo TTL trong `imgUrlCache`). Xuất Excel dùng `imgRawB64(im)` (tự tải từ Storage nếu ảnh chỉ có `.path`) ở **cả 3** chỗ xuất ảnh (`buildWorkbookBlob`/`buildFullReportBlob`/`exportCapaXlsx` — chỗ thứ 3 từng bị bỏ sót, đã vá).
 - Chip ☁️ góc trên phải (`updateCloudChip`) hiện "⚡ Realtime" khi kênh SUBSCRIBED, ngược lại hiện trạng thái hàng đợi/polling.
 
 ### 12.6. Nhiều Auditor cùng chấm 1 khu vực — Admin chọn kết quả cuối cùng
@@ -367,10 +376,24 @@ Quản lý tài khoản Admin (UI) : renderUsers/addUserPrompt (~1543-1586, gọ
 9. **Nâng cấp lớn**: nhiều Auditor cùng chấm 1 khu vực + Admin chọn kết quả cuối cùng (mục 12.6) — thêm lớp batch cá nhân song song với batch chính thức, tab Phê duyệt có card duyệt bài, nút dọn dữ liệu cá nhân.
 10. Đóng gói kiến trúc mục 12.4/12.5 thành 1 Claude Skill dùng lại được — `supabase-sync-auth-patterns` (không nằm trong repo này, là skill riêng đã gửi cho người dùng dưới dạng file `.skill`) — tham khảo nếu cần áp dụng đúng pattern này cho 1 app khác.
 11. Mục 12 này được viết vào `HANDOFF.md` (2026-09-18).
+12. **Repo chuyển sang Git thật** (`github.com/ngocthanhthien/GMP-Score`, layout dẹt ở root — xem cảnh báo đầu mục 12) — tiếp tục ở phiên/máy khác, publish GitHub Pages thật.
+13. **Audit Egress lần 1** (2026-09-20, `EGRESS_AUDIT.md`) — phát hiện `pullAll()` full-table 7 bảng mọi lúc là nguồn egress lớn nhất (có thể 150-500+MB/lượt khi dữ liệu lớn). Sửa: tách `pullTables(tables,silent,force)` (Realtime chỉ kéo đúng bảng đổi), delta-sync theo `updated_at`, ảnh mới chỉ lưu `path` Storage thay vì base64 trong DB. Thêm `supabase/add_updated_at.sql`.
+14. **Audit Egress lần 2** (2026-09-23) — audit độc lập, không dựa báo cáo lần 1. Phát hiện: (a) `visibilitychange` vẫn gọi `pullAll(true)` ép full-select, xoá sạch lợi ích delta-sync ở bước 13 mỗi lần đổi tab; (b) ảnh Storage đang lưu **file gốc chưa nén** (không phải bản đã nén canvas) — tiềm năng tốn hơn cả base64 cũ; (c) `exportCapaXlsx()` bị bỏ sót khi sửa ảnh ở bước 13, ảnh biến mất khỏi Excel CAPA; (d) `flushPending()` vẫn gửi tuần tự. Cả 4 đã sửa, test bằng monkey-patch `SB` (xem `EGRESS_AUDIT.md` mục 0b).
+15. **Chuyển sang project Supabase mới** (2026-09-23) — project "GMP Score App" (`mnhlddcvbzihhnnirhiz.supabase.co`), Admin dự kiến `binh.dang@ild-coffee.com`. Copy `schema.sql` (đã merge sẵn mục 8b updated_at/trigger) + `functions/admin-users/index.ts` từ `C:\Apps\GMP_Score_App` vào repo này lần đầu; cập nhật `config.js` sang url/anonKey mới. Project mới còn cần các bước tay ở Dashboard (xem 12.11) trước khi dùng được.
 
 ### 12.11. Việc còn để ngỏ / bắt buộc làm trước khi coi là "xong"
 
-- **⚠️ Quan trọng nhất**: `ready/config.js` đã có `SUPABASE_URL`/`anonKey` **thật** (project đã kết nối), nhưng **chưa chắc `schema.sql` mới nhất đã được chạy trên project đó** — mọi lần sửa `schema.sql` trong quá trình làm mục 12 đều nhắc "chạy lại toàn bộ file, an toàn chạy lại nhiều lần" (xem đầu `README - GMP Score Supabase.md`). Việc đầu tiên khi tiếp tục: xác nhận với người vận hành đã chạy lại chưa, nếu chưa chắc thì chạy lại — không mất dữ liệu.
-- Chưa test end-to-end với Supabase/GitHub Pages thật cho TOÀN BỘ mục 12 (đăng nhập thật, RLS/RPC trên dữ liệu thật, Realtime SUBSCRIBED thật, đồng bộ 2 máy thật, upload ảnh bucket thật) — mọi test trong quá trình làm đều qua bản sao cách ly. Xem README mục "Kiểm tra trước bàn giao" để biết chính xác phần nào đã test/chưa test.
+- **⚠️ Quan trọng nhất**: đã đổi `config.js` sang project Supabase MỚI (`mnhlddcvbzihhnnirhiz.supabase.co`, xem lịch sử mục 15) nhưng **project mới CHƯA chạy `schema.sql`, CHƯA deploy Edge Function `admin-users`, CHƯA bật Anonymous sign-in, CHƯA có tài khoản Admin**. Các bước tay còn lại trên Supabase Dashboard (người vận hành tự làm, KHÔNG đưa mật khẩu/service_role key cho AI):
+  1. SQL Editor → dán toàn bộ `supabase/schema.sql` (repo này) → Run (an toàn chạy lại nhiều lần).
+  2. Authentication → Sign In / Providers → bật **"Allow anonymous sign-ins"** (bắt buộc, tầng User dựa vào đây).
+  3. Authentication → Users → **Add user** → tạo tài khoản Admin `binh.dang@ild-coffee.com` + đặt mật khẩu (tự làm, không đưa cho AI).
+  4. SQL Editor → chạy `insert into public.gmp_members (user_id, role, disabled) select id, 'admin', false from auth.users where email = 'binh.dang@ild-coffee.com' on conflict (user_id) do update set role='admin', disabled=false;` để cấp quyền Admin cho tài khoản vừa tạo.
+  5. Deploy Edge Function: `npx supabase login` → `npx supabase link --project-ref mnhlddcvbzihhnnirhiz` → `npx supabase functions deploy admin-users` (chạy từ thư mục gốc repo này, cần Supabase CLI).
+  6. Authentication → URL Configuration → Site URL đặt đúng URL GitHub Pages đang publish của repo này.
+  7. Kiểm tra lại `config.js` đã publish (GitHub Pages) khớp `url`/`anonKey` mới, mở app thử đăng nhập tầng User (chọn tên + Mã NV) và tầng Admin (email/mật khẩu vừa tạo).
+- Chưa test end-to-end với Supabase/GitHub Pages thật cho TOÀN BỘ mục 12 trên project MỚI này (đăng nhập thật, RLS/RPC trên dữ liệu thật, Realtime SUBSCRIBED thật, đồng bộ 2 máy thật, upload ảnh bucket thật) — mọi test trong quá trình làm (viết mục 12, 2 đợt audit Egress) đều qua bản sao cách ly/mock `SB`, chưa chạy trên project thật (cũ hay mới).
 - Cân nhắc mở rộng `gmp_purge_finalized_candidates` cho kỳ đã chốt hẳn (hiện chỉ áp dụng kỳ đang mở, xem 12.9) nếu thực tế cần dọn dữ liệu cũ thường xuyên.
+- `schema.sql`/Edge Function `admin-users` giờ **sống chính thức trong repo này** (`supabase/`) — bản ở `C:\Apps\GMP_Score_App` coi là lưu trữ cũ, đừng sửa ở đó nữa (xem cảnh báo đầu mục 12).
+- Dữ liệu cũ trên project `thhevdrgbxvyatfvtyrh.supabase.co` (nếu có) **không tự chuyển** sang project mới — nếu cần giữ lại lịch sử chấm điểm cũ, phải tự export/import dữ liệu (chưa có script cho việc này).
+- Ảnh cũ (base64 trong DB, hoặc upload lên Storage trước đợt audit lần 2) chưa được nén lại — chỉ ảnh mới từ giờ mới nhỏ (xem `EGRESS_AUDIT.md` mục 0b).
 - Cân nhắc siết RLS thật sự (không chỉ rào cản giao diện) nếu yêu cầu bảo mật tăng lên — sẽ cần bước cấp quyền phía server khi Mã NV đúng (VD đổi phiên ẩn danh thành phiên có custom claim), phức tạp hơn đáng kể so với hiện tại, cố tình chưa làm trong mục 12.

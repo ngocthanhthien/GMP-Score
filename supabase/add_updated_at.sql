@@ -1,3 +1,8 @@
+-- LƯU Ý: schema.sql hiện tại (mục "8b.") đã tích hợp sẵn cột updated_at + trigger này
+-- cho project MỚI tạo từ schema.sql — KHÔNG cần chạy file này trên project mới
+-- (mnhlddcvbzihhnnirhiz.supabase.co). File này chỉ dùng để retrofit 1 project CŨ đã
+-- chạy schema.sql từ trước khi có mục 8b (ví dụ project cũ thhevdrgbxvyatfvtyrh).
+--
 -- Thêm cột updated_at + trigger tự cập nhật cho gmp_records và gmp_periods.
 -- An toàn chạy lại nhiều lần (idempotent) — dùng if not exists / create or replace / drop trigger if exists.
 -- Sau khi chạy file này, KHÔNG cần sửa gì thêm ở client (ready/index.html): pullTables() đã có sẵn

@@ -19,6 +19,24 @@ Cả 3 vấn đề top-1/2/3 bên dưới **đã sửa trong `index.html`** và 
 - Quick win #3 (limit tạm thời) **không làm** vì rủi ro âm thầm làm rơi dữ liệu lịch sử của tab Lịch sử — cần delta-sync thật (mục 1) giải quyết đúng gốc thay vì limit.
 - Bucket `gmp-mediasave`: dùng `createSignedUrl` nên hoạt động bất kể bucket public hay private — nhưng cần bucket có policy SELECT cho phiên hiện tại (anon/authenticated), nếu chưa có, ảnh mới sẽ không hiển thị được (không lỗi cứng — `resolveImgUrl` trả rỗng, ảnh chỉ không hiện) và cần bạn kiểm tra Storage policies.
 
+## 0b. Audit lần 2 (cập nhật 2026-09-23) — độc lập, không dựa vào báo cáo trên
+
+Rà lại toàn bộ code sau đợt fix ở mục 0, phát hiện **2 vấn đề mới** (một cái tiềm năng còn tốn hơn vấn đề gốc) và xác nhận **2 quick win cũ (mục 3 gốc) vẫn chưa làm**. Cả 4 đã sửa trong `index.html` và test bằng monkey-patch `SB` (đúng phương pháp mục 12.7 `HANDOFF.md`):
+
+| # | Vấn đề | Trạng thái |
+|---|---|---|
+| 4 | `visibilitychange` (mỗi lần đổi tab quay lại) gọi `pullAll(true)` → ép `force=true`, **vô hiệu hoá toàn bộ delta-sync/targeted-pull** của mục 0 — full-select cả 7 bảng mỗi lần người dùng chuyển tab | ✅ Đổi thành `pullTables(ALL_SYNC_TABLES,true,false)` — dùng đúng delta-cursor đã có, không ép full nữa |
+| 5 | `uploadImageToStorage` nhận **file gốc chưa nén** (ảnh điện thoại có thể vài-chục MB) thay vì bản đã nén cục bộ (canvas 1280px/q0.72) — mọi lượt xem thumbnail/lightbox/xuất Excel sau này tải lại đúng file nặng này qua Storage, có thể tốn hơn base64 cũ | ✅ `attachImage` giờ upload `dataUrlToBlob(im.data)` (bản đã nén) thay vì `file` gốc — test thực tế: ảnh gốc 19.8MB → file lên Storage chỉ 700KB |
+| 6 | `exportCapaXlsx()` (nút Xuất Excel CAPA) vẫn dùng `b64of(im.data)` trực tiếp — ảnh lưu sau đợt fix mục 0 (chỉ có `.path`, không còn `.data`) bị **âm thầm biến mất khỏi file Excel CAPA** (không báo lỗi) | ✅ Đổi sang dùng `imgRawB64(im)` giống 2 chỗ export kia (`buildWorkbookBlob`/`buildFullReportBlob`) — tự tải từ Storage nếu ảnh chỉ có path |
+| 7 | `flushPending()` gửi tuần tự từng item chờ đồng bộ (Quick Win đã ghi ở mục 3 gốc nhưng chưa làm) — không tốn thêm egress nhưng chậm khi có nhiều thay đổi chờ gửi | ✅ Gửi song song theo lô 5 (`Promise.all` từng nhóm) — test: 12 item tuần tự ~360ms → còn ~107ms |
+
+**Ghi chú về #5 (đánh đổi)**: chọn phương án đơn giản nhất — upload đúng bản đã nén, không giữ thêm bản gốc chất lượng cao trên Storage. Nếu sau này cần ảnh gốc chất lượng cao cho mục đích khác (in ấn lớn, làm bằng chứng pháp lý...), sẽ cần đổi sang lưu 2 bản (nén cho xem hàng ngày + gốc riêng cho khi thực sự cần) — phức tạp hơn, cố tình chưa làm trong đợt này.
+
+**Vẫn chưa làm / cần bạn xác nhận** (không đổi so với mục 0):
+- Chạy `supabase/add_updated_at.sql` nếu chưa chạy — ảnh hưởng trực tiếp tới % lượt pull dùng được delta thật cho `gmp_records`/`gmp_periods`.
+- Ảnh cũ (base64 trong DB, hoặc upload trước đợt #5 này) không tự động nén lại — chỉ ảnh MỚI từ giờ mới nhỏ.
+- Sau khi sửa #4/#5, nên theo dõi lại Supabase Dashboard → Usage (Database Egress **và** Storage Egress tách riêng) để xác nhận cải thiện thực tế — #5 giảm Storage Egress mạnh, #4 giảm Database Egress mạnh, không cộng dồn vào cùng 1 con số.
+
 ## 1. Tổng quan
 
 **Mức độ: Cao.**
