@@ -387,7 +387,15 @@ Quản lý tài khoản Admin (UI) : renderUsers/addUserPrompt (~1543-1586, gọ
   1. SQL Editor → dán toàn bộ `supabase/schema.sql` (repo này) → Run (an toàn chạy lại nhiều lần).
   2. Authentication → Sign In / Providers → bật **"Allow anonymous sign-ins"** (bắt buộc, tầng User dựa vào đây).
   3. Authentication → Users → **Add user** → tạo tài khoản Admin `binh.dang@ild-coffee.com` + đặt mật khẩu (tự làm, không đưa cho AI).
-  4. SQL Editor → chạy `insert into public.gmp_members (user_id, role, disabled) select id, 'admin', false from auth.users where email = 'binh.dang@ild-coffee.com' on conflict (user_id) do update set role='admin', disabled=false;` để cấp quyền Admin cho tài khoản vừa tạo.
+  4. SQL Editor → chạy (SAU khi đã tạo user ở bước 3 — `display_name` là NOT NULL nên phải truyền giá trị, đổi tên hiển thị nếu muốn):
+     ```sql
+     insert into public.gmp_members (user_id, display_name, role, disabled)
+     select id, 'Đặng Thanh Bình', 'admin', false
+     from auth.users
+     where email = 'binh.dang@ild-coffee.com'
+     on conflict (user_id) do update set role = 'admin', disabled = false;
+     ```
+     Kiểm tra lại: `select m.role, m.disabled, u.email from public.gmp_members m join auth.users u on u.id=m.user_id where u.email='binh.dang@ild-coffee.com';` phải trả về đúng 1 dòng `role=admin, disabled=false`.
   5. Deploy Edge Function: `npx supabase login` → `npx supabase link --project-ref mnhlddcvbzihhnnirhiz` → `npx supabase functions deploy admin-users` (chạy từ thư mục gốc repo này, cần Supabase CLI).
   6. Authentication → URL Configuration → Site URL đặt đúng URL GitHub Pages đang publish của repo này.
   7. Kiểm tra lại `config.js` đã publish (GitHub Pages) khớp `url`/`anonKey` mới, mở app thử đăng nhập tầng User (chọn tên + Mã NV) và tầng Admin (email/mật khẩu vừa tạo).
