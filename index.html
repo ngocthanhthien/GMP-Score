@@ -1882,7 +1882,13 @@ async function loadAuditorNames(){
     const {data,error}=await SB.rpc("gmp_list_auditor_names");
     if(error)throw error;
     AUDITOR_NAMES=Array.isArray(data)?data:[];
-  }catch(e){AUDITOR_NAMES=[];}
+    const le=$("#loginErr");
+    if(le&&!AUDITOR_NAMES.length)le.textContent="Danh sách người đánh giá đang trống — Admin cần thêm người trong tab 👥 Quản lý người dùng (kèm Mã NV) trước.";
+  }catch(e){
+    AUDITOR_NAMES=[];
+    const le=$("#loginErr");
+    if(le)le.textContent="Không tải được danh sách người đánh giá: "+(e.message||e)+" (kiểm tra đã chạy supabase/schema.sql trên project chưa).";
+  }
   renderAuditorSelect();
 }
 async function doPickAuditor(){
@@ -1992,8 +1998,8 @@ async function initCloud(){
   if(session.user&&session.user.is_anonymous===false){
     await afterSignIn(session); // khôi phục phiên Admin đã đăng nhập trước đó (còn hiệu lực sau khi tải lại trang)
   }else{
-    await loadAuditorNames();
     $("#loginErr").textContent="";
+    await loadAuditorNames();
   }
   await pullAll(true);startPoller();startRealtime();
   SB.auth.onAuthStateChange((event)=>{
