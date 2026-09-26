@@ -925,8 +925,8 @@ function footButtonsHtml(){
   if(CURRENT.preview)return `<span class="muted">👁️ Đang xem bài của người khác — chỉ đọc, không sửa được ở đây</span>`;
   if(CURRENT.readOnly)return `<span class="muted">🔒 Không thể chỉnh sửa ở trạng thái hiện tại</span>`;
   const discardBtn=`<button class="btn gray" id="discardBtn" title="Huỷ các thay đổi chưa lưu, chấm lại từ đầu">↩️ Discard</button>`;
-  if(CURRENT.sub&&CURRENT.sub.status==="SUBMITTED")return `<button class="btn big" id="adminSaveBtn">💾 Lưu thay đổi (Admin)</button> ${discardBtn}`;
-  return `<button class="btn gray" id="draftBtn">💾 Lưu nháp</button> <button class="btn big" id="submitBtn">📤 Gửi kết quả</button> ${discardBtn}`;
+  if(CURRENT.sub&&CURRENT.sub.status==="SUBMITTED")return `<button class="btn big" id="adminSaveBtn" title="Lưu thay đổi lên hệ thống (kết quả vẫn ở trạng thái Đã gửi)">📤 Submit — lưu lên hệ thống</button> ${discardBtn}`;
+  return `<button class="btn gray" id="draftBtn">💾 Lưu nháp</button> <button class="btn big" id="submitBtn" title="Gửi kết quả lên hệ thống">📤 Submit — gửi lên hệ thống</button> ${discardBtn}`;
 }
 function renderChecklist(){
   const rows=CURRENT.rows;if(!rows.length){$("#checklistHost").innerHTML="";return;}
@@ -1172,14 +1172,14 @@ async function saveDraft(){
   dirtyEval=false;maybeAutoPush();renderAll();loadAreaForm(CURRENT.code);
 }
 async function submitResult(){
-  if(!confirm("Gửi kết quả chấm điểm Function "+CURRENT.code+"?\n\nSau khi gửi, bạn sẽ KHÔNG tự sửa lại được — chỉ Admin xem/sửa được cho tới khi chốt."))return;
+  if(!confirm("Submit kết quả chấm điểm Function "+CURRENT.code+" lên hệ thống?\n\nSau khi Submit, bạn sẽ KHÔNG tự sửa lại được — chỉ Admin xem/sửa được cho tới khi chốt."))return;
   const sc=await writeCurrentRows("SUBMITTED");if(!sc)return;const rr=ratingOf(sc.pct);
   toast("📤 Đã gửi kết quả "+CURRENT.code+": "+sc.actual+"/"+sc.poss+" ("+(sc.pct*100).toFixed(1)+"% · "+rr[0]+")");
   dirtyEval=false;maybeAutoPush();renderAll();loadAreaForm(CURRENT.code);
 }
 async function adminSaveEdit(){
   const sc=await writeCurrentRows(null);if(!sc)return;const rr=ratingOf(sc.pct);
-  toast("💾 Đã lưu thay đổi (Admin) "+CURRENT.code+": "+sc.actual+"/"+sc.poss+" ("+(sc.pct*100).toFixed(1)+"% · "+rr[0]+")");
+  toast("📤 Đã Submit lên hệ thống "+CURRENT.code+": "+sc.actual+"/"+sc.poss+" ("+(sc.pct*100).toFixed(1)+"% · "+rr[0]+")");
   dirtyEval=false;maybeAutoPush();renderAll();loadAreaForm(CURRENT.code);
 }
 function discardCurrentEdit(){
