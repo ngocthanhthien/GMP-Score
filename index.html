@@ -255,11 +255,6 @@ table.data tbody tr:hover td{background:#faf7f2}
         </div>
       </div>
       <div class="hint" id="areaDesc" style="margin-top:8px"></div>
-      <div class="row" id="areaActions" style="margin-top:6px;display:none">
-        <button class="btn sm" id="expAreaBtn">📊 Xuất Excel khu vực này</button>
-        <button class="btn sm gray" id="impAreaBtn">📥 Nhập Excel khu vực này</button>
-        <button class="btn sm amber" id="mailAreaBtn">✉️ Gửi mail khu vực này</button>
-      </div>
     </div>
 
     <div id="checklistHost"></div>
@@ -597,7 +592,7 @@ table.data tbody tr:hover td{background:#faf7f2}
       <p>Tab <b>🛠️ CAPA</b> liệt kê mọi mục 0 và 1, <b>lọc theo khu vực</b> &amp; trạng thái. Nhập Hành động khắc phục, Người phụ trách, Hạn, Trạng thái (Mở / Đang xử lý / Đã đóng) — tự lưu, xuất CSV/Excel.</p>
 
       <h3>H. Xuất / Nhập Excel theo khu vực</h3>
-      <p>Trong tab Chấm điểm, sau khi chọn khu vực: <b>Xuất / Nhập Excel khu vực này</b>. Bản tổng hợp toàn bộ ở tab <b>📋 Tổng hợp QA</b>.</p>
+      <p>Trong tab Chấm điểm, sau khi chọn khu vực: chấm điểm và gửi kết quả. Bản tổng hợp toàn bộ ở tab <b>📋 Tổng hợp QA</b>.</p>
 
       <h3>I. Gửi mail (mở Outlook kèm file)</h3>
       <p>Đặt email người nhận &amp; mẫu tiêu đề ở tab <b>🔧 Cài đặt</b>. Bấm <span class="kbd">✉️ Gửi mail</span> → app tạo file <b>.eml</b> đã đính kèm sẵn Excel. <b>Mở file .eml vừa tải</b> → Outlook mở cửa sổ soạn thư có sẵn người nhận + file đính kèm.</p>
@@ -897,7 +892,6 @@ function loadAreaForm(code,previewKey){
   const sub=subOf(code,period,submitterKey);
   CURRENT={code,rows:[],period,sub,submitterKey,preview,readOnly:preview||!canEditFunction(code,period,submitterKey)};
   dirtyEval=false;activeItem=null;
-  $("#areaActions").style.display=code?"flex":"none";
   if(!a){$("#checklistHost").innerHTML="";$("#areaDesc").textContent="";return;}
   const stMap={DRAFT:["📝 Nháp","t1"],SUBMITTED:["📤 Đã gửi — chờ Admin chốt","t1"],LOCKED:["🔒 Đã chốt","t2"]};
   const stx=stMap[sub.status]||stMap.DRAFT;
@@ -2472,13 +2466,52 @@ function renderCandidateReview(pid,admin){
         <td class="center"><button class="btn sm amber" data-cview="${esc(g.area.code)}|${esc(c.submitterKey)}">👁️ Xem</button> ${pickBtn}</td>
       </tr>`;
     }).join("");
+    const nSub=g.cands.filter(c=>c.status==="SUBMITTED").length;
+    const mergeBtn=(nSub>=1&&!locked)?` <button class="btn sm blue" data-cmerge="${esc(g.area.code)}">🧮 Tổng hợp: điểm thấp nhất + gộp mọi lỗi (${nSub} bài đã gửi)</button>`:"";
+    const mergedTag=finalKey==="__merged__"?' <span class="tag t2">🧮 Bản chính thức = tổng hợp</span>':"";
     return `<div style="margin-bottom:16px">
-      <div style="font-weight:700;margin-bottom:6px">${esc(g.area.code)} — ${esc(g.area.full)} <span class="muted" style="font-weight:400">(${g.cands.length} bài đã chấm)</span></div>
+      <div style="font-weight:700;margin-bottom:6px">${esc(g.area.code)} — ${esc(g.area.full)} <span class="muted" style="font-weight:400">(${g.cands.length} bài đã chấm)</span>${mergedTag}${mergeBtn}</div>
       <div style="overflow-x:auto"><table class="data"><tr><th>Auditor</th><th>Điểm</th><th class="center">Trạng thái</th><th class="center">Thao tác</th></tr>${rows}</table></div>
     </div>`;
   }).join("");
   $$('#apCandidates [data-cview]').forEach(b=>b.onclick=()=>{const [code,key]=b.dataset.cview.split("|");switchTab("input");$("#inArea").value=code;loadAreaForm(code,key);updateLive();toast("Đang xem bài chấm của khu "+code);});
   $$('#apCandidates [data-cpick]').forEach(b=>b.onclick=()=>{const [code,key]=b.dataset.cpick.split("|");promoteCandidate(code,key);});
+  $$('#apCandidates [data-cmerge]').forEach(b=>b.onclick=()=>mergeCandidates(b.dataset.cmerge));
+}
+/* Tổng hợp nhiều Auditor cùng chấm 1 khu vực: mỗi câu lấy ĐIỂM THẤP NHẤT trong các bài đã gửi,
+   gộp TẤT CẢ Phát hiện/Bằng chứng (khử trùng lặp, ghi rõ tên người ghi khi có >1 người) và toàn bộ ảnh. */
+async function mergeCandidates(code){
+  if(!isAdmin()){toast("Chỉ Admin được tổng hợp");return;}
+  const period=activePeriodId();
+  if(functionLocked(code,period)){toast("Function này đã bị khoá");return;}
+  const a=areaByCode(code);if(!a)return;
+  const cands=candidatesForFunction(code,period).filter(c=>c.status==="SUBMITTED");
+  if(!cands.length){toast("Chưa có bài nào đã Gửi để tổng hợp");return;}
+  const names=cands.map(c=>c.auditor||c.submitterName||c.submitterKey);
+  if(!confirm("Tổng hợp "+cands.length+" bài đã gửi ("+names.join(", ")+") cho khu vực "+code+"?\n\n• Mỗi câu lấy ĐIỂM THẤP NHẤT\n• Gộp tất cả Phát hiện / Bằng chứng / ảnh của mọi người\n\nKết quả ghi thành bản CHÍNH THỨC (ghi đè bản chính thức hiện tại của khu này); vẫn sửa lại được ở tab Chấm điểm trước khi 🔒 Chốt.\n\nTiếp tục?"))return;
+  const perCand=cands.map((c,ci)=>{const by={};recordsForBatch(period+"|"+code+"|"+c.submitterKey).forEach(r=>{by[(r.cat||"")+"||"+r.req]=r;});return {name:names[ci],by};});
+  const canonBatch=period+"|"+code;
+  const join=(items)=>{ // items: [{name,text}] đã khử trùng lặp
+    const seen=new Set(),out=[];
+    items.forEach(x=>{const t=(x.text||"").trim();if(!t)return;const k=t.toLowerCase();if(seen.has(k))return;seen.add(k);out.push(x);});
+    if(out.length<=1)return out.length?out[0].text.trim():"";
+    return out.map(x=>"["+x.name+"] "+x.text.trim()).join("\n");
+  };
+  let lowered=0;
+  for(let i=0;i<a.items.length;i++){const it=a.items[i];const key=(it.cat||"")+"||"+it.req;
+    const rs=perCand.map(p=>({name:p.name,r:p.by[key]})).filter(x=>x.r);
+    const scores=rs.map(x=>x.r.score).filter(s=>s!=null);
+    const score=scores.length?Math.min(...scores):null;
+    if(scores.length&&Math.max(...scores)!==score)lowered++;
+    const images=[];rs.forEach(x=>(x.r.images||[]).forEach(im=>images.push(im)));
+    await dbPut({id:canonBatch+"|"+i,batch:canonBatch,period,code,full:a.full,submitterKey:null,
+      date:todayISO(),auditor:names.join(", "),cat:it.cat,req:it.req,score,cls:clsOf(score),
+      finding:join(rs.map(x=>({name:x.name,text:x.r.finding}))),
+      evidence:join(rs.map(x=>({name:x.name,text:x.r.evidence}))),images});}
+  await reloadRecords();
+  await setSubStatus(code,period,{status:"SUBMITTED",auditor:names.join(", "),submittedAt:todayISO(),submittedBy:(CURRENT_USER&&CURRENT_USER.name)||"Admin",finalSubmitter:"__merged__"});
+  renderApprove();renderAll();maybeAutoPush();
+  toast("🧮 Đã tổng hợp "+cands.length+" bài cho "+code+" — "+lowered+" câu bị hạ xuống điểm thấp nhất");
 }
 async function promoteCandidate(code,submitterKey){
   if(!isAdmin()){toast("Chỉ Admin được chọn kết quả cuối cùng");return;}
@@ -2615,9 +2648,6 @@ async function boot(){
     CHK.push({code,full,items:[{cat:"(Chủ đề mới)",req:"(Yêu cầu mới)"}]});fillAreaSelects();$("#editArea").value=code;markChkDirty();renderEdit();};
   $("#resetChkBtn").onclick=()=>{if(!confirm("Khôi phục checklist về mặc định June.2026? (Không xoá dữ liệu đã chấm)"))return;CHK=seedChk();sortCHK();saveChk();chkDirty=false;fillAreaSelects();renderEdit();toast("Đã khôi phục checklist mặc định");};
   $("#saveChkBtn").onclick=saveChkChanges;
-  $("#expAreaBtn").onclick=()=>{const c=$("#inArea").value;if(!c){toast("Hãy chọn khu vực");return;}exportExcel(c);};
-  $("#impAreaBtn").onclick=()=>{const c=$("#inArea").value;if(!c){toast("Hãy chọn khu vực trước");return;}$("#importXlsxInput").click();};
-  $("#mailAreaBtn").onclick=()=>{const c=$("#inArea").value;if(!c){toast("Hãy chọn khu vực");return;}composeMail(c);};
   $("#expAllBtn").onclick=()=>exportExcel(null);
   $("#mailAllBtn").onclick=()=>composeMail(null);
   $("#importXlsxInput").onchange=e=>{const f=e.target.files[0];if(f)importExcel(f);e.target.value="";};
