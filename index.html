@@ -2407,6 +2407,26 @@ async function lockWholePeriod(){
   renderApprove();renderAll();maybeAutoPush();
   toast("🔒 Đã chốt toàn bộ kỳ "+periodLabel(pid)+" ✓");
 }
+/* Ô "Người đã chấm" ở bảng chính tab Phê duyệt — hiện RÕ từng Auditor đã chấm khu vực này
+   và % điểm của riêng người đó (không chỉ 1 cái tên chung chung như trước), kể cả khi bản
+   chính thức chưa có gì (đang chờ Admin Chọn/Tổng hợp) — xem candidatesForFunction()/mục 12.6. */
+function scorersCellHtml(code,pid,sub,cands){
+  if(!cands.length)return sub.auditor?esc(sub.auditor):'<span class="muted">—</span>';
+  const finalKey=sub.finalSubmitter||null;
+  const chips=cands.map(c=>{
+    const scb=areaScoreForBatch(pid+"|"+code+"|"+c.submitterKey);
+    const rr=scb?ratingOf(scb.pct):null;
+    const pctTxt=scb?(scb.pct*100).toFixed(0)+"%":"—";
+    const cls=rr?rr[2]:"t1";
+    const stIcon=c.status==="SUBMITTED"?"📤":"📝";
+    const chosen=finalKey===c.submitterKey;
+    const name=esc(c.auditor||c.submitterName||c.submitterKey);
+    return `<span class="tag ${cls}" style="margin:1px 4px 2px 0;display:inline-block" title="${c.status==="SUBMITTED"?"Đã gửi":"Nháp"}">${stIcon} ${name}: ${pctTxt}${chosen?" ✅":""}</span>`;
+  }).join("");
+  const note=finalKey==="__merged__"?'<div class="muted" style="font-size:11px;margin-top:2px">🧮 Bản chính thức = tổng hợp mọi người ở trên</div>'
+    :(finalKey?`<div class="muted" style="font-size:11px;margin-top:2px">✅ Bản chính thức = bài của ${esc(cands.find(c=>c.submitterKey===finalKey)&&(cands.find(c=>c.submitterKey===finalKey).auditor||finalKey)||"")}</div>`:"");
+  return `<div>${chips}</div>${note}`;
+}
 function renderApprove(){
   if(!$("#apTable"))return;
   const admin=isAdmin();
@@ -2419,25 +2439,27 @@ function renderApprove(){
   const lbl=$("#apPeriodLabel");if(lbl)lbl.textContent=periodLabel(pid)+" — "+(per?per.status:"Đang chấm");
   const stMap={DRAFT:["📝 Nháp","t1"],SUBMITTED:["📤 Đã gửi","t1"],LOCKED:["🔒 Đã chốt","t2"]};
   let done=0,pend=0,draft=0,rows="";
-  CHK.forEach((a,i)=>{const sc=areaScore(a.code);const sub=subOf(a.code,pid);
-    if(!sc){draft++;rows+=`<tr><td class="center">${i+1}</td><td><b>${esc(a.code)}</b></td><td class="center muted" colspan="5">— chưa chấm —</td></tr>`;return;}
-    const rr=ratingOf(sc.pct);const stx=stMap[sub.status]||stMap.DRAFT;
+  CHK.forEach((a,i)=>{
+    const sc=areaScore(a.code);const sub=subOf(a.code,pid);const cands=candidatesForFunction(a.code,pid);
+    if(!sc&&!cands.length){draft++;rows+=`<tr><td class="center">${i+1}</td><td><b>${esc(a.code)}</b></td><td class="center muted" colspan="5">— chưa chấm —</td></tr>`;return;}
+    const rr=sc?ratingOf(sc.pct):null;const stx=stMap[sub.status]||stMap.DRAFT;
     if(sub.status==="LOCKED")done++;else if(sub.status==="SUBMITTED")pend++;else draft++;
     const act=admin?(
       sub.status==="SUBMITTED"?`<button class="btn sm" data-lock="${esc(a.code)}">🔒 Chốt</button> <button class="btn sm amber" data-apedit="${esc(a.code)}">✏️ Xem/Sửa</button>`
       :sub.status==="LOCKED"?`<span class="muted" style="font-size:11.5px">${esc(sub.lockedBy||"")} · ${esc(sub.lockedAt||"")}</span>`
       :`<button class="btn sm amber" data-apedit="${esc(a.code)}">✏️ Xem</button>`
     ):"";
+    const scoreCell=sc?`${sc.actual}/${sc.poss} <span class="tag ${rr[2]}">${(sc.pct*100).toFixed(0)}%</span>`:`<span class="muted" style="font-size:11.5px">chưa có bản chính thức</span>`;
     rows+=`<tr><td class="center">${i+1}</td><td><b>${esc(a.code)}</b><div class="muted" style="font-size:11.5px">${esc(a.full)}</div></td>
-      <td class="right">${sc.actual}/${sc.poss} <span class="tag ${rr[2]}">${(sc.pct*100).toFixed(0)}%</span></td>
+      <td class="right">${scoreCell}</td>
       <td class="center"><span class="tag ${stx[1]}">${stx[0]}</span></td>
-      <td class="muted" style="font-size:11.5px">${esc(sub.auditor||"")}</td>
+      <td style="font-size:11.5px;min-width:200px">${scorersCellHtml(a.code,pid,sub,cands)}</td>
       <td class="center">${act}</td></tr>`;});
   $("#apKpis").innerHTML=`<div class="kpi"><div class="kl">Đã chốt</div><div class="kv" style="color:#16a34a">${done}</div></div>
     <div class="kpi"><div class="kl">Đã gửi — chờ chốt</div><div class="kv" style="color:#d97706">${pend}</div></div>
     <div class="kpi"><div class="kl">Nháp / chưa chấm</div><div class="kv" style="color:#dc2626">${draft}</div></div>
     <div class="kpi"><div class="kl">Tổng Function</div><div class="kv">${CHK.length}</div></div>`;
-  const head=`<tr><th class="center">#</th><th>Khu vực / Function</th><th class="right">Điểm</th><th class="center">Trạng thái</th><th>Người chấm</th><th class="center">Thao tác</th></tr>`;
+  const head=`<tr><th class="center">#</th><th>Khu vực / Function</th><th class="right">Điểm</th><th class="center">Trạng thái</th><th>Người đã chấm (điểm từng người)</th><th class="center">Thao tác</th></tr>`;
   $("#apTable").innerHTML=head+rows;
   $$('#apTable [data-lock]').forEach(b=>b.onclick=()=>lockFunction(b.dataset.lock));
   $$('#apTable [data-apedit]').forEach(b=>b.onclick=()=>{const c=b.dataset.apedit;switchTab("input");$("#inArea").value=c;loadAreaForm(c);updateLive();toast("Đang mở khu "+c);});
