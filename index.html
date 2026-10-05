@@ -885,12 +885,38 @@ function fillAreaSelects(){
 
 let CURRENT={code:null,rows:[]};let activeItem=null;let dirtyEval=false;
 function myAuditorKey(){return safeName((CURRENT_USER&&(CURRENT_USER.code||CURRENT_USER.name))||"");}
+/* Chữ ký dữ liệu nguồn của form (điểm/phát hiện/bằng chứng/ảnh + trạng thái nộp) — so sánh để chỉ vẽ lại
+   form khi server thật sự có thay đổi liên quan tới khu vực đang mở. */
+function areaFormSig(code,previewKey){
+  const period=activePeriodId();const preview=!!previewKey;
+  const sk=preview?previewKey:(isAdmin()?null:myAuditorKey());
+  const sub=subOf(code,period,sk);
+  const prev=sk?recordsForBatch(period+"|"+code+"|"+sk):latestByArea(code,period);
+  return JSON.stringify([period,sk,sub.status,preview||!canEditFunction(code,period,sk),
+    prev.map(r=>[r.cat,r.req,r.score,r.finding,r.evidence,(r.images||[]).map(im=>im.path||(im.data?im.data.length:0))])]);
+}
+let syncStaleNotified=false;
+/* Gọi sau mỗi lượt đồng bộ: KHÔNG BAO GIỜ ghi đè form khi người dùng đang chấm dở (dirtyEval); nếu form
+   sạch thì chỉ vẽ lại khi dữ liệu liên quan thật sự đổi, giữ nguyên chủ đề đang xem và chế độ xem bài người khác. */
+function refreshAreaFormIfClean(){
+  const sel=$("#inArea");const code=sel&&sel.value;if(!code)return;
+  const pk=CURRENT.preview?CURRENT.submitterKey:undefined;
+  if(CURRENT.code===code&&CURRENT.sig===areaFormSig(code,pk)){syncStaleNotified=false;return;}
+  if(dirtyEval){
+    if(!syncStaleNotified){syncStaleNotified=true;toast("ℹ️ Có cập nhật mới từ máy chủ cho khu vực này — bản bạn đang chấm được giữ nguyên. Bấm Lưu để lưu bản của bạn, hoặc Discard để tải bản mới.");}
+    return;
+  }
+  const step=CURRENT.code===code?(CURRENT.step||0):0;
+  loadAreaForm(code,pk);
+  if(step)try{gotoStep(step);}catch(e){}
+}
 function loadAreaForm(code,previewKey){
+  syncStaleNotified=false;
   const a=areaByCode(code);const period=activePeriodId();
   const preview=!!previewKey;
   const submitterKey=preview?previewKey:(isAdmin()?null:myAuditorKey());
   const sub=subOf(code,period,submitterKey);
-  CURRENT={code,rows:[],period,sub,submitterKey,preview,readOnly:preview||!canEditFunction(code,period,submitterKey)};
+  CURRENT={code,rows:[],period,sub,submitterKey,preview,readOnly:preview||!canEditFunction(code,period,submitterKey),sig:areaFormSig(code,previewKey)};
   dirtyEval=false;activeItem=null;
   if(!a){$("#checklistHost").innerHTML="";$("#areaDesc").textContent="";return;}
   const stMap={DRAFT:["📝 Nháp","t1"],SUBMITTED:["📤 Đã gửi — chờ Admin chốt","t1"],LOCKED:["🔒 Đã chốt","t2"]};
@@ -1096,6 +1122,7 @@ async function backupImageToMedia(period,code,dataUrl,seq){
   }catch(e){return {status:"none"};}
 }
 async function attachImage(file,period,code){
+  dirtyEval=true; // đang xử lý/upload ảnh: chặn đồng bộ nền vẽ lại form làm mất ảnh vừa đính
   const im=await fileToImg(file);
   period=period||activePeriodId();code=code||"";
   im.createdAt=new Date().toISOString();im.period=period;im.code=code;
@@ -2009,6 +2036,8 @@ async function callAdminUsers(payload){
   return j;
 }
 let syncBusy=false,pollTimer=null,flushTimer=null;
+let dbPutLocal=null;
+const localWriteAt=new Map(); // "r:<recordId>" / "s:<subId>" -> thời điểm sửa cục bộ gần nhất (chống bản server cũ ghi đè)
 function pendKey(kind,id){return kind+":"+id;}
 async function enqueueSync(kind,id,payload){
   await pendPut({key:pendKey(kind,id),kind,id,payload,at:Date.now()});
@@ -2117,10 +2146,8 @@ async function pullTables(tables,silent,force){
   if(!sbConfigured()||!SESSION_READY)return;
   const want=new Set(tables&&tables.length?tables:ALL_SYNC_TABLES);
   syncBusy=true;updateCloudChip();
+  const pullStartedAt=Date.now();
   try{
-    const pend=await pendAll();
-    const pendKeys=new Set(pend.map(p=>p.key));
-    const resetPeriods=new Set(pend.filter(p=>p.kind==="period_reset").map(p=>p.id));
     const jobs={};
     if(want.has("gmp_periods"))jobs.rp=fetchTableRows("gmp_periods",force);
     if(want.has("gmp_submissions"))jobs.rs=fetchTableRows("gmp_submissions",force);
@@ -2135,14 +2162,22 @@ async function pullTables(tables,silent,force){
     const {rp,rs,rr,rc,rk,rt,ra}=out;
     for(const k of ["rc","rk","rt","ra"]){if(out[k]&&out[k].data)addTraffic(JSON.stringify(out[k].data).length);}
     pullEgressDaily().catch(()=>{}); // throttle nội bộ ~20s, không thêm request mỗi lần pullTables chạy
+    // Đọc hàng đợi chờ gửi SAU khi dữ liệu server về (không phải trước lúc gọi mạng) — nếu không, thay đổi
+    // người dùng vừa lưu trong lúc chờ phản hồi sẽ không được bảo vệ và bị bản cũ từ server ghi đè.
+    const pend=await pendAll();
+    const pendKeys=new Set(pend.map(p=>p.key));
+    const resetPeriods=new Set(pend.filter(p=>p.kind==="period_reset").map(p=>p.id));
+    // Bản ghi vừa sửa cục bộ SAU khi lượt pull này bắt đầu (kể cả đã gửi xong, hàng đợi đã trống) thì bản
+    // server trong tay là bản cũ hơn — bỏ qua, bản cục bộ mới sẽ tự lên server và quay về ở lượt pull sau.
+    const localNewer=(k)=>(localWriteAt.get(k)||0)>=pullStartedAt;
     if(rp&&rp.data){for(const row of rp.data){if(!pendKeys.has(pendKey("period_create",row.id))&&!pendKeys.has(pendKey("period_lock",row.id)))await perPut(mapServerPeriod(row));}await reloadPeriods();}
-    if(rs&&rs.data){for(const row of rs.data){if(resetPeriods.has(row.period))continue;if(!pendKeys.has(pendKey("submission",row.id)))await subPut(mapServerSub(row));}await reloadSubs();}
-    if(rr&&rr.data){for(const row of rr.data){if(resetPeriods.has(row.period))continue;if(!pendKeys.has(pendKey("record",row.id))&&!pendKeys.has(pendKey("record_del",row.id)))await dbPut(mapServerRecord(row));}await reloadRecords();}
+    if(rs&&rs.data){for(const row of rs.data){if(resetPeriods.has(row.period))continue;if(!pendKeys.has(pendKey("submission",row.id))&&!localNewer("s:"+row.id))await subPut(mapServerSub(row));}await reloadSubs();}
+    if(rr&&rr.data){for(const row of rr.data){if(resetPeriods.has(row.period))continue;if(!pendKeys.has(pendKey("record",row.id))&&!pendKeys.has(pendKey("record_del",row.id))&&!localNewer("r:"+row.id))await (dbPutLocal||dbPut)(mapServerRecord(row));}await reloadRecords();}
     if(rk&&rk.data&&rk.data.data&&!pendKeys.has(pendKey("checklist","current"))&&!chkDirty){CHK=rk.data.data;sortCHK();try{localStorage.setItem(LS_CHK,JSON.stringify(CHK));}catch(e){}fillAreaSelects();}
     if(rt&&rt.data&&rt.data.data&&!pendKeys.has(pendKey("settings","current"))){SET=Object.assign(defSettings(),rt.data.data);SET.egress=Object.assign(defEgress(),SET.egress||{});try{localStorage.setItem(LS_SET,JSON.stringify(SET));}catch(e){}applyTabOrder();}
     if(rc&&rc.data&&!pendKeys.has(pendKey("capa","current"))){CAPA=rc.data.data||{};try{localStorage.setItem(LS_CAPA,JSON.stringify(CAPA));}catch(e){}}
     if(ra&&ra.data&&!pendKeys.has(pendKey("auditors","current"))){AUDITORS=ra.data.data||[];try{localStorage.setItem(LS_AUD,JSON.stringify(AUDITORS));}catch(e){}renderAuditorsAdmin();}
-    renderAll();if($("#inArea")&&$("#inArea").value)loadAreaForm($("#inArea").value);
+    renderAll();refreshAreaFormIfClean();
     if(!silent)toast("🔄 Đã đồng bộ với máy chủ");
   }catch(e){if(!silent)toast("Lỗi đồng bộ: "+(e.message||e));}
   finally{syncBusy=false;updateCloudChip();}
@@ -2197,7 +2232,12 @@ function scheduleRealtimePull(table){
   // nhưng CHỈ kéo (các) bảng thực sự vừa đổi — không kéo lại toàn bộ 7 bảng cho 1 thay đổi nhỏ.
   realtimePullTimer=setTimeout(()=>{
     const tables=Array.from(realtimeChangedTables);realtimeChangedTables=new Set();
-    if(!dirtyEval&&!syncBusy&&tables.length)pullTables(tables,true).catch(()=>{});
+    if(!tables.length)return;
+    if(dirtyEval||syncBusy){ // không bỏ rơi sự kiện: xếp lại, thử lại sau
+      tables.forEach(t=>realtimeChangedTables.add(t));
+      clearTimeout(realtimePullTimer);realtimePullTimer=setTimeout(()=>scheduleRealtimePull(tables[0]),4000);return;
+    }
+    pullTables(tables,true).catch(()=>{});
   },400);
 }
 function startRealtime(){
@@ -2221,8 +2261,9 @@ window.addEventListener("online",()=>{updateCloudChip();flushPending();});
 window.addEventListener("offline",updateCloudChip);
 function installSyncWraps(){
   const _dbPut=dbPut,_dbDel=dbDel,_saveCapa=saveCapa,_saveChk=saveChk,_saveSettings=saveSettings,_saveAuditors=saveAuditors;
-  dbPut=function(rec){const p=_dbPut(rec);if(SESSION_READY)enqueueSync("record",rec.id,rec);return p;};
-  dbDel=function(id){const p=_dbDel(id);if(SESSION_READY)enqueueSync("record_del",id,{id});return p;};
+  dbPutLocal=_dbPut; // ghi chỉ cục bộ, KHÔNG xếp hàng đẩy lên server — dùng cho dữ liệu vừa kéo từ server về
+  dbPut=function(rec){localWriteAt.set("r:"+rec.id,Date.now());const p=_dbPut(rec);if(SESSION_READY)enqueueSync("record",rec.id,rec);return p;};
+  dbDel=function(id){localWriteAt.set("r:"+id,Date.now());const p=_dbDel(id);if(SESSION_READY)enqueueSync("record_del",id,{id});return p;};
   saveCapa=function(){_saveCapa();if(SESSION_READY)enqueueSync("capa","current",CAPA);};
   saveChk=function(){_saveChk();if(SESSION_READY&&isAdmin())enqueueSync("checklist","current",CHK);};
   saveSettings=function(){_saveSettings();if(SESSION_READY&&isAdmin())enqueueSync("settings","current",SET);};
@@ -2322,6 +2363,7 @@ async function setSubStatus(code,period,patch,submitterKey,submitterName){
   const key=subKey(period,code,submitterKey);
   const cur=SUBS[key]||{id:key,period,code,status:"DRAFT",submitterKey:submitterKey||null};
   const next=Object.assign({},cur,patch);if(submitterName)next.submitterName=submitterName;
+  localWriteAt.set("s:"+key,Date.now());
   await subPut(next);SUBS[key]=next;
   if(SESSION_READY)enqueueSync("submission",key,{period,code,status:next.status,auditor:next.auditor||null,
     submitterKey:submitterKey||null,submitterName:next.submitterName||null,finalSubmitter:next.finalSubmitter||null});
