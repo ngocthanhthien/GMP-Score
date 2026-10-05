@@ -806,6 +806,14 @@ async function reloadRecords(){RECORDS=await dbAll();try{localStorage.setItem(LS
 function stripImg(r){const c=Object.assign({},r);c.images=(r.images||[]).length?["<"+r.images.length+" anh>"]:[];return c;}
 async function seedIfEmpty(){
   const all=await dbAll();
+  // Bản Supabase: KHÔNG nạp dữ liệu mẫu (SEED). Trước đây mỗi máy/trình duyệt trống đều tự nạp ~1500 dòng mẫu "June.2026"
+  // rồi đẩy lên server như dữ liệu thật (kỳ 2026-06) — vừa làm bẩn dữ liệu, vừa tốn egress. Dữ liệu thật đến từ server.
+  if(sbConfigured()){
+    // dọn dòng mẫu còn sót trong IndexedDB của máy này (chỉ cục bộ, không đẩy lên server; server nếu còn sẽ tự kéo về đúng bản)
+    const demo=all.filter(r=>r.batch===SEED_BATCH);
+    for(const r of demo)await new Promise(res=>{const o=tx("records","readwrite").delete(r.id);o.onsuccess=()=>res();o.onerror=()=>res();});
+    await reloadRecords();return;
+  }
   if(all.length===0){
     for(const a of SEED){a.items.forEach((it,i)=>{if(it.score==null)return;
       dbPut({id:SEED_BATCH+"|"+a.code+"|"+i,batch:SEED_BATCH,date:"2026-06-01",auditor:"Audit team",
@@ -2360,18 +2368,26 @@ async function pullTables(tables,silent,force){
       await reloadPeriods();
     }
     if(rs&&rs.data){for(const row of rs.data){if(resetPeriods.has(row.period))continue;if(!pendKeys.has(pendKey("submission",row.id))&&!localNewer("s:"+row.id))await subPut(mapServerSub(row));}await reloadSubs();}
-    if(rr&&rr.data){for(const row of rr.data){if(resetPeriods.has(row.period))continue;if(!pendKeys.has(pendKey("record",row.id))&&!pendKeys.has(pendKey("record_del",row.id))&&!localNewer("r:"+row.id))await (dbPutLocal||dbPut)(mapServerRecord(row));}await reloadRecords();}
+    if(rr&&rr.data){for(const row of rr.data){if(resetPeriods.has(row.period)||row.batch===SEED_BATCH)continue;/* dữ liệu mẫu SEED cũ còn trên server: không nạp vào app */if(!pendKeys.has(pendKey("record",row.id))&&!pendKeys.has(pendKey("record_del",row.id))&&!localNewer("r:"+row.id))await (dbPutLocal||dbPut)(mapServerRecord(row));}await reloadRecords();}
     if(rk&&rk.data&&rk.data.data&&!pendKeys.has(pendKey("checklist","current"))&&!chkDirty){CHK=rk.data.data;sortCHK();try{localStorage.setItem(LS_CHK,JSON.stringify(CHK));}catch(e){}fillAreaSelects();}
     if(rt&&rt.data&&rt.data.data&&!pendKeys.has(pendKey("settings","current"))){SET=Object.assign(defSettings(),rt.data.data);SET.egress=Object.assign(defEgress(),SET.egress||{});try{localStorage.setItem(LS_SET,JSON.stringify(SET));}catch(e){}applyTabOrder();}
     if(rc&&rc.data&&!pendKeys.has(pendKey("capa","current"))){CAPA=rc.data.data||{};try{localStorage.setItem(LS_CAPA,JSON.stringify(CAPA));}catch(e){}}
     if(ra&&ra.data&&!pendKeys.has(pendKey("auditors","current"))){AUDITORS=ra.data.data||[];try{localStorage.setItem(LS_AUD,JSON.stringify(AUDITORS));}catch(e){}renderAuditorsAdmin();}
+    if(force&&want.has("gmp_records")&&rr&&rr.data)markFullPull();
     renderAll();refreshAreaFormIfClean();
     if(needFullRecs)setTimeout(()=>pullTables(["gmp_records","gmp_submissions"],true,true).catch(()=>{}),300);
     if(!silent)toast("🔄 Đã đồng bộ với máy chủ");
   }catch(e){if(!silent)toast("Lỗi đồng bộ: "+(e.message||e));}
   finally{syncBusy=false;updateCloudChip();}
 }
-async function pullAll(silent){return pullTables(ALL_SYNC_TABLES,silent,true);}
+/* Kéo TOÀN BỘ (full-select) chỉ khi cần: máy chưa có mốc delta (lần đầu/xoá cache) hoặc đã >24h kể từ lần full cuối.
+   Còn lại luôn kéo delta (chỉ dòng đổi). Trước đây mỗi lần mở app + mỗi ~10 phút trên mỗi tab đều full-select —
+   với dữ liệu thật hiện có ~21 MB/lượt (118 dòng ảnh base64 cũ chiếm 98%) => hàng trăm MB egress/ngày. */
+const FULL_PULL_EVERY_MS=24*3600*1000;
+function lastFullPullAt(){try{return +localStorage.getItem("gmp_last_full_pull")||0;}catch(e){return 0;}}
+function markFullPull(){try{localStorage.setItem("gmp_last_full_pull",String(Date.now()));}catch(e){}}
+function shouldForceFull(){return !getSyncCursor("gmp_records")||(Date.now()-lastFullPullAt()>FULL_PULL_EVERY_MS);}
+async function pullAll(silent){return pullTables(ALL_SYNC_TABLES,silent,shouldForceFull());}
 let pollTick=0;
 function startPoller(){
   clearInterval(pollTimer);pollTick=0;
@@ -2399,8 +2415,7 @@ function startPoller(){
     // Đa số các lượt: dùng delta (chỉ bảng có updated_at mới lọc bớt, các bảng khác tự full-select).
     // Cứ ~20 lượt full-select 1 lần để tự phục hồi nếu delta bị lệch (đồng hồ máy chủ, cột chưa
     // migrate xong…) — khoảng thời gian thực tế giữa 2 lần full-select co giãn theo mode ở trên.
-    const forceFull=(pollTick%20===0);
-    pullTables(ALL_SYNC_TABLES,true,forceFull).catch(()=>{});
+    pullTables(ALL_SYNC_TABLES,true,shouldForceFull()).catch(()=>{});
   },30000);
 }
 document.addEventListener("visibilitychange",()=>{
