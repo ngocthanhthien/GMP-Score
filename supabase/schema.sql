@@ -319,6 +319,10 @@ begin
   if p_status='LOCKED' and not v_admin then raise exception 'Chỉ Admin được khoá'; end if;
   if v_cur='SUBMITTED' and p_status='DRAFT' and not v_admin then raise exception 'Đã nộp — chỉ Admin được sửa'; end if;
 
+  -- gmp_submissions.period có khoá ngoại tới gmp_periods: nếu kỳ chưa tồn tại trên server (VD kỳ chỉ mới tạo cục bộ,
+  -- hoặc user thường — không gọi được gmp_create_period) thì tự tạo kỳ "Đang chấm" để lượt nộp không bị lỗi FK mãi mãi.
+  insert into public.gmp_periods(id,functions,status) values(p_period,'[]'::jsonb,'Đang chấm') on conflict (id) do nothing;
+
   insert into public.gmp_submissions(id,period,code,status,auditor,submitter_key,submitter_name,final_submitter,submitted_at,submitted_by,locked_at,locked_by,updated_at)
   values(v_id,p_period,p_code,p_status,p_auditor,v_submitter,nullif(p_submitter_name,''),nullif(p_final_submitter,''),
     case when p_status='SUBMITTED' then now() else null end,
