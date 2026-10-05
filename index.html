@@ -95,6 +95,36 @@ textarea{resize:vertical;min-height:38px}
 .scoresel button.s2.on{background:linear-gradient(120deg,#22c55e,#16a34a);border-color:#16a34a;color:#fff;box-shadow:0 2px 6px rgba(22,163,74,.3)}
 .scoresel button.s1.on{background:linear-gradient(120deg,#f6b73c,#e0890b);border-color:#e0890b;color:#fff;box-shadow:0 2px 6px rgba(224,137,11,.3)}
 .scoresel button.s0.on{background:linear-gradient(120deg,#ef4444,#dc2626);border-color:#dc2626;color:#fff;box-shadow:0 2px 6px rgba(220,38,38,.3)}
+.scoresel button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1.15}
+.scoresel button b{font-size:15px}.scoresel button i{font-style:normal;font-size:10px;font-weight:700;letter-spacing:.1px}
+.scoresel button.sna.on{background:linear-gradient(120deg,#94a3b8,#64748b);border-color:#64748b;color:#fff;box-shadow:0 2px 6px rgba(100,116,139,.3)}
+.qctrl .scoresel{width:auto;flex:1;min-width:250px;max-width:460px}
+.qitem.unscored{border-left:4px solid #f59e0b;background:#fffbef}
+.qitem.collapsed .qnotes{display:none}
+.qnotes textarea{width:100%;min-height:36px;margin-top:10px}
+.qhint{font-size:12px;font-weight:500;color:var(--muted);margin-top:4px;font-style:italic}
+.notebtn{border:1.5px solid var(--line);background:#fff;border-radius:9px;padding:6px 10px;cursor:pointer;font-size:14px}
+.notebtn:hover{background:#f8fafc}
+.stephead{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.bulkbtn{font-size:11.5px}
+.topprog{margin-bottom:10px}
+.tprow{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.tpbar{flex:1;min-width:140px;height:10px;border-radius:8px;background:#e5e7eb;overflow:hidden}
+.tpfill{height:100%;width:0;transition:width .25s,background .25s}
+.tptext{font-size:12.5px}
+.qfilter{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
+.fchip{border:1.5px solid var(--line);background:#fff;border-radius:30px;padding:5px 13px;font-size:12px;font-weight:700;cursor:pointer;color:var(--coffee)}
+.fchip.on{background:var(--grad-coffee);color:#fff;border-color:transparent}
+.fhide{display:none!important}
+.filtering .steps{display:block;overflow:visible}
+.filtering .step{min-width:0;max-height:none;overflow:visible}
+.filtering .stepnav,.filtering .nextbtn,.filtering .bulkbtn{display:none}
+.schip .csb.todo{background:#fff3cd;color:#92400e}
+.schip .csb.mid{background:#fef3c7;color:#b45309}
+.schip .csb.bad{background:#fee2e2;color:#b91c1c}
+.schip .csb.na{background:#e2e8f0;color:#475569}
+.schip.todo{border-style:dashed;border-color:#f59e0b}
+.schip.active .csb.todo{background:#fff3cd;color:#92400e}.schip.active .csb.mid{background:#fef3c7;color:#b45309}.schip.active .csb.bad{background:#fee2e2;color:#b91c1c}.schip.active .csb.na{background:#e2e8f0;color:#475569}
 /* live bar */
 .livebar{position:sticky;bottom:0;background:rgba(255,255,255,.97);backdrop-filter:blur(6px);border-top:3px solid var(--gold);
   display:flex;gap:20px;align-items:center;flex-wrap:wrap;padding:12px 18px;box-shadow:0 -4px 16px rgba(35,48,58,.1);z-index:15}
@@ -188,7 +218,6 @@ table.data tbody tr:hover td{background:#faf7f2}
 .qreq{font-size:14px;font-weight:600;margin-bottom:10px;line-height:1.5}
 .qn{display:inline-flex;align-items:center;justify-content:center;background:var(--grad-teal);color:#fff;border-radius:50%;width:22px;height:22px;font-size:11px;font-weight:800;margin-right:8px;box-shadow:0 1px 3px rgba(12,124,114,.3)}
 .qctrl{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
-.qctrl .scoresel{width:134px;flex:none}
 .qctrl textarea{flex:1;min-width:160px;min-height:36px}
 .qev{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
 .qev input{flex:1;min-width:140px}
@@ -255,6 +284,7 @@ table.data tbody tr:hover td{background:#faf7f2}
         </div>
       </div>
       <div class="hint" id="areaDesc" style="margin-top:8px"></div>
+      <div class="hint" id="autoSaveInfo" style="margin-top:2px;color:var(--teal-d)"></div>
     </div>
 
     <div id="checklistHost"></div>
@@ -535,84 +565,81 @@ table.data tbody tr:hover td{background:#faf7f2}
       <h2>📖 Hướng dẫn sử dụng &amp; cách đánh giá</h2>
 
       <h3>A. Các tab trong ứng dụng</h3>
+      <p>Người đánh giá (đăng nhập bằng tên + Mã NV) chỉ thấy <b>📝 Chấm điểm</b> và <b>📖 Hướng dẫn</b>. Các tab còn lại dành cho Admin.</p>
       <ul>
-        <li><b>📝 Chấm điểm</b> — chấm đầy đủ checklist một Function trong kỳ đang mở (theo từng chủ đề).</li>
-        <li><b>⚡ Lỗi nhanh</b> — ghi nhanh vài lỗi mà không cần chấm cả checklist (cần đăng nhập).</li>
+        <li><b>📝 Chấm điểm</b> — chấm checklist một Function trong kỳ đang mở (theo từng chủ đề), lưu nháp và Submit.</li>
         <li><b>📊 Thống kê</b> — bảng điểm + đồ thị tất cả Function của kỳ đang mở.</li>
-        <li><b>📋 Tổng hợp QA</b> — KPI toàn nhà máy cho quản lý (cần đăng nhập).</li>
-        <li><b>🛠️ CAPA</b> — quản lý hành động khắc phục của kỳ đang mở, lọc theo khu vực.</li>
-        <li><b>✅ Phê duyệt</b> — Admin xem trạng thái từng Function, <b>Chốt</b> từng Function hoặc <b>Chốt toàn bộ kỳ</b>; cũng là nơi <b>Tạo kỳ mới</b> / <b>Reset kỳ đang chấm</b>.</li>
-        <li><b>🔄 Đồng bộ</b> — đồng bộ dữ liệu (điểm, kỳ, CAPA) giữa nhiều máy qua thư mục OneDrive/Drive dùng chung.</li>
+        <li><b>📋 Tổng hợp QA</b> — KPI toàn nhà máy cho quản lý, xuất Excel tổng hợp, in báo cáo.</li>
+        <li><b>🛠️ CAPA</b> — hành động khắc phục của kỳ đang mở (các câu điểm 0 và 1), lọc theo khu vực.</li>
+        <li><b>✅ Phê duyệt</b> — xem từng Function có những ai đã chấm và % điểm của từng người; <b>Chọn</b> 1 bài hoặc <b>🧮 Tổng hợp</b> (điểm thấp nhất + gộp mọi lỗi), so sánh từng câu giữa các người chấm, rồi <b>Chốt</b>; cũng là nơi Tạo kỳ mới / Reset kỳ / Dọn dữ liệu chấm cá nhân.</li>
+        <li><b>✉️ Mail</b> — soạn mail báo cáo (.eml kèm Excel) theo khu vực/tổng hợp.</li>
+        <li><b>🔄 Đồng bộ</b> — dữ liệu lưu trên Supabase, các máy đăng nhập đều thấy chung và cập nhật gần như tức thì; nút <b>ĐỒNG BỘ NGAY</b> để ép đồng bộ.</li>
+        <li><b>✏️ Chỉnh sửa</b> — sửa/thêm/xoá/sắp xếp câu hỏi, khu vực và <b>gợi ý tiêu chí chấm</b> cho từng câu (Admin).</li>
+        <li><b>🔧 Cài đặt</b> — thứ tự tab, email, ngưỡng, folder backup ảnh, sao lưu/phục hồi, <b>🛡️ Data &amp; Egress Control</b> (Admin).</li>
+        <li><b>👥 Tài khoản</b> — danh sách người đánh giá (kèm Mã NV) và tài khoản Admin (Admin).</li>
         <li><b>🕘 Lịch sử</b> — xem lại điểm các kỳ tháng <b>đã chốt</b> (chỉ xem, không sửa).</li>
-        <li><b>✏️ Chỉnh sửa</b> — sửa/thêm/xoá câu hỏi, khu vực (Admin).</li>
-        <li><b>🔧 Cài đặt</b> — email, ngưỡng, folder Mediasave, sao lưu (Admin).</li>
       </ul>
 
-      <h3>B. Kỳ chấm điểm &amp; quy trình Nháp → Gửi → Chốt</h3>
-      <p>Mỗi tháng là <b>một kỳ chấm điểm</b> (VD: Tháng 09/2026). Mỗi Function trong một kỳ chỉ có <b>một kết quả</b>, đi qua 3 trạng thái:</p>
+      <h3>B. Kỳ chấm điểm &amp; quy trình Nháp → Submit → Chốt</h3>
+      <p>Mỗi tháng là <b>một kỳ chấm điểm</b>. <b>Nhiều người có thể cùng chấm một khu vực</b> — mỗi người có bài riêng, không thấy bài của nhau. Mỗi bài đi qua các trạng thái:</p>
       <ul>
-        <li><b>📝 DRAFT (Nháp)</b> — đang chấm, có thể <span class="kbd">💾 Lưu nháp</span> nhiều lần, mở lại app vẫn còn.</li>
-        <li><b>📤 SUBMITTED (Đã gửi)</b> — bấm <span class="kbd">📤 Gửi kết quả</span> khi chấm xong; người chấm không sửa lại được nữa, chỉ Admin xem/sửa được ở tab Phê duyệt trước khi chốt.</li>
-        <li><b>🔒 LOCKED (Đã chốt)</b> — Admin bấm <b>Chốt</b> (từng Function hoặc <b>Chốt toàn bộ kỳ</b>) ở tab ✅ Phê duyệt. Sau khi chốt, không ai sửa được nữa — chỉ xem lại ở tab 🕘 Lịch sử.</li>
+        <li><b>📝 Nháp</b> — đang chấm. App <b>tự lưu nháp mỗi 45 giây</b> (và khi bạn chuyển tab trình duyệt); cũng có thể bấm <span class="kbd">💾 Lưu nháp</span> hoặc <span class="kbd">Ctrl</span>+<span class="kbd">S</span>. Mở lại app vẫn còn.</li>
+        <li><b>📤 Đã gửi</b> — bấm <span class="kbd">📤 Submit</span> khi chấm xong để lưu lên hệ thống. <b>Chỉ Submit được khi mọi câu đã chấm (hoặc chọn N/A)</b>. Sau khi Submit người chấm không tự sửa lại được; Admin xem và xử lý ở tab Phê duyệt.</li>
+        <li><b>🔒 Đã chốt</b> — Admin chọn/tổng hợp kết quả chính thức rồi <b>Chốt</b> (từng Function hoặc cả kỳ). Sau khi chốt không ai sửa được, chỉ xem ở tab 🕘 Lịch sử.</li>
       </ul>
-      <p>Khi kỳ hiện tại đã chốt xong, Admin bấm <b>➕ Tạo kỳ mới</b> (tab Phê duyệt) để mở tháng kế tiếp — checklist giữ nguyên, không copy điểm tháng trước, dữ liệu các kỳ cũ vẫn giữ nguyên. Nếu cần làm lại từ đầu kỳ đang mở (chưa chốt), Admin dùng <b>♻️ Reset kỳ đang chấm</b> — chỉ xoá dữ liệu của riêng kỳ đó.</p>
+      <p>Khi kỳ hiện tại đã chốt xong, Admin bấm <b>➕ Tạo kỳ mới</b> (tab Phê duyệt) để mở tháng kế tiếp — checklist giữ nguyên, không copy điểm tháng trước. <b>♻️ Reset kỳ đang chấm</b> xoá dữ liệu của riêng kỳ đang mở (chưa chốt).</p>
 
-      <h3>C. Chấm điểm — dạng cuộn ngang theo chủ đề</h3>
-      <p>Checklist được chia thành <b>từng chủ đề</b> (Personal Hygiene, Maintenance Plan &amp; Record, FB Prevention…). Mỗi lần chỉ hiện <b>một chủ đề</b> để màn hình gọn gàng.</p>
+      <h3>C. Chấm điểm — từng chủ đề, có lọc nhanh</h3>
       <ul>
-        <li>Dải <b>chip tiến trình</b> ở trên cùng hiển thị tên + điểm từng chủ đề (chuyển xanh khi đạt tối đa). Bấm chip để nhảy tới chủ đề bất kỳ.</li>
-        <li>Di chuyển bằng nút <span class="kbd">← Trước</span> / <span class="kbd">Tiếp →</span>, nút <span class="kbd">Chủ đề tiếp theo →</span> ở cuối mỗi bước, hoặc <b>vuốt / cuộn ngang</b>.</li>
-        <li>Trong mỗi câu: chấm bằng nút <b>2 / 1 / 0</b>, ghi <b>Phát hiện</b>, <b>📎 Đính ảnh</b> bằng chứng.</li>
-        <li>Tới <b>chủ đề cuối cùng</b> sẽ có nút <span class="kbd">💾 Lưu nháp</span> và <span class="kbd">📤 Gửi kết quả</span> (xem mục B). Thanh dưới cùng luôn hiện điểm &amp; xếp loại tức thì.</li>
+        <li>Đầu trang có <b>thanh tiến độ</b>: số câu đã chấm / tổng, số câu còn lại, số câu chưa đạt.</li>
+        <li><b>Chip chủ đề</b>: viền gạch + chữ "còn N" = chủ đề còn câu chưa chấm; xanh = đã chấm hết và đạt toàn bộ; vàng = có câu 1; đỏ = có câu 0. Bấm chip để nhảy tới chủ đề.</li>
+        <li><b>Bộ lọc</b>: <span class="kbd">⏳ Chưa chấm</span> (các câu còn bỏ sót) và <span class="kbd">⚠️ Chưa đạt 0/1</span> (rà lại trước khi Submit) — hiện gom trên một trang; chọn <span class="kbd">Tất cả</span> để quay về xem theo chủ đề.</li>
+        <li>Mỗi câu <b>mặc định CHƯA CHẤM</b> (viền cam). Chọn <b>2 Đạt / 1 Cần cải thiện / 0 Không đạt / N/A Không áp dụng</b>. Câu có <b>💡 gợi ý tiêu chí</b> thì đọc kỹ trước khi chấm.</li>
+        <li>Ô <b>Phát hiện / Bằng chứng / ảnh</b> tự mở khi chấm 0 hoặc 1; câu đạt/N/A được thu gọn — bấm <span class="kbd">📝</span> để mở khi cần ghi chú.</li>
+        <li>Nút <span class="kbd">✔ Chấm cả chủ đề = 2</span> chỉ đặt 2 cho các câu <b>chưa chấm</b> của chủ đề đó, có hỏi xác nhận — chỉ dùng khi bạn đã kiểm tra và tất cả đều đạt.</li>
+        <li>Thanh dưới cùng luôn hiện điểm &amp; xếp loại tức thì; nếu còn câu chưa chấm sẽ hiện "⏳ Còn N câu chưa chấm" thay vì xếp loại.</li>
       </ul>
 
-      <h3>D. ⚡ Ghi nhận lỗi nhanh</h3>
-      <p>Dùng khi đi hiện trường phát hiện vài lỗi mà <b>không cần chấm cả checklist</b>.</p>
-      <ol>
-        <li>Chọn <b>Ngày, Người đánh giá, Khu vực</b>.</li>
-        <li>Ở "Thêm một lỗi": chọn <b>Chủ đề</b> → <b>Yêu cầu</b> (danh sách lọc đúng theo khu vực), chọn <b>Mức độ</b> (0 — Chưa tuân thủ / 1 — Cần cải thiện), ghi <b>Phát hiện</b>, <b>Bằng chứng</b>, <b>đính kèm hình ảnh</b>.</li>
-        <li>Bấm <span class="kbd">➕ Thêm lỗi vào danh sách</span> — lặp lại để ghi nhiều lỗi.</li>
-        <li>Bấm <span class="kbd">💾 Lưu</span>: tạo một lượt đánh giá đầy đủ cho khu vực — các mục có lỗi nhận điểm đã chọn, <b>mọi mục còn lại mặc định Đạt (2đ)</b>.</li>
-      </ol>
-      <div class="box">⚠️ Lưu ở chế độ này tạo <b>lượt đánh giá mới nhất</b> cho khu vực. Nếu khu vực đã có lượt chấm chi tiết cần giữ, hãy dùng tab <b>Chấm điểm</b>.</div>
-
-      <h3>E. Thang điểm &amp; cách cho điểm</h3>
+      <h3>D. Thang điểm &amp; cách cho điểm</h3>
       <table class="data" style="max-width:640px">
         <tr><th>Điểm</th><th>Phân loại</th><th>Khi nào cho điểm này</th></tr>
-        <tr><td class="center"><span class="tag t2">2</span></td><td>Tuân thủ</td><td>Đáp ứng đầy đủ yêu cầu, có bằng chứng/hồ sơ rõ ràng.</td></tr>
+        <tr><td class="center"><span class="tag t2">2</span></td><td>Đạt (Tuân thủ)</td><td>Đáp ứng đầy đủ yêu cầu, có bằng chứng/hồ sơ rõ ràng.</td></tr>
         <tr><td class="center"><span class="tag t1">1</span></td><td>Cần cải thiện</td><td>Cơ bản đạt nhưng còn thiếu sót nhỏ, hồ sơ chưa đầy đủ/kịp thời, rủi ro thấp.</td></tr>
-        <tr><td class="center"><span class="tag t0">0</span></td><td>Chưa tuân thủ</td><td>Không đáp ứng, thiếu hồ sơ, có nguy cơ ATTP → bắt buộc lập CAPA.</td></tr>
+        <tr><td class="center"><span class="tag t0">0</span></td><td>Không đạt (Chưa tuân thủ)</td><td>Không đáp ứng, thiếu hồ sơ, có nguy cơ ATTP → bắt buộc lập CAPA.</td></tr>
+        <tr><td class="center"><span class="tag">N/A</span></td><td>Không áp dụng</td><td>Yêu cầu không áp dụng cho khu vực/thời điểm này — <b>không tính vào điểm và % đạt</b>.</td></tr>
       </table>
-      <div class="box">Mỗi câu tối đa <b>2 điểm</b>. <b>% đạt = Tổng điểm thực tế ÷ (Số câu × 2)</b>. Ngưỡng xếp loại chỉnh được ở tab <b>🔧 Cài đặt</b> (mặc định ĐẠT ≥ 88%, Cần cải thiện ≥ 80%).</div>
+      <div class="box"><b>% đạt = Tổng điểm thực tế ÷ (Số câu áp dụng × 2)</b> (câu N/A không tính). Ngưỡng xếp loại chỉnh ở tab <b>🔧 Cài đặt</b> (mặc định ĐẠT ≥ 88%, Cần cải thiện ≥ 80%).</div>
 
-      <h3>F. Đính kèm hình ảnh theo lỗi</h3>
-      <p>Tại ô <b>Bằng chứng</b> (cả tab Chấm điểm và Lỗi nhanh), bấm <span class="kbd">📎 Đính ảnh</span> để chọn nhiều ảnh — bấm ảnh để xem to, bấm ✕ để xoá. Ảnh được nhúng vào file khi <b>Xuất Excel</b>.</p>
+      <h3>E. Đính kèm hình ảnh</h3>
+      <p>Tại ô <b>Bằng chứng</b>, bấm <span class="kbd">📎 Đính/Dán ảnh</span> để chọn nhiều ảnh, hoặc <b>dán (Ctrl+V)</b> / <b>kéo-thả</b> ảnh vào câu đang chọn. Ảnh được nén và lưu lên Supabase Storage; bấm ảnh để xem to, bấm ✕ để xoá. Ảnh được nhúng vào file khi Xuất Excel.</p>
+
+      <h3>F. Nhiều người chấm một khu vực — Admin xử lý</h3>
+      <ul>
+        <li>Tab <b>✅ Phê duyệt</b> hiện rõ <b>từng người đã chấm và % điểm riêng</b> của họ (📤 đã gửi, 📝 nháp).</li>
+        <li><b>🔍 So sánh từng câu</b>: các câu lệch ≥2 điểm giữa những người chấm được đẩy lên đầu và tô nền — chỉ cần xem lại đúng các câu đó.</li>
+        <li><b>🧮 Tổng hợp</b>: mỗi câu lấy <b>điểm thấp nhất</b>, gộp mọi Phát hiện/Bằng chứng/ảnh của tất cả mọi người; hoặc <b>✅ Chọn làm kết quả cuối cùng</b> để lấy nguyên bài của 1 người. Sau đó vẫn sửa được trước khi 🔒 Chốt.</li>
+      </ul>
 
       <h3>G. CAPA — hành động khắc phục</h3>
-      <p>Tab <b>🛠️ CAPA</b> liệt kê mọi mục 0 và 1, <b>lọc theo khu vực</b> &amp; trạng thái. Nhập Hành động khắc phục, Người phụ trách, Hạn, Trạng thái (Mở / Đang xử lý / Đã đóng) — tự lưu, xuất CSV/Excel.</p>
+      <p>Tab <b>🛠️ CAPA</b> liệt kê mọi câu điểm 0 và 1 của bản chính thức, lọc theo khu vực &amp; trạng thái. Nhập Hành động khắc phục, Người phụ trách, Hạn, Trạng thái (Mở / Đang xử lý / Đã đóng) — tự lưu, xuất CSV/Excel.</p>
 
-      <h3>H. Xuất / Nhập Excel theo khu vực</h3>
-      <p>Trong tab Chấm điểm, sau khi chọn khu vực: chấm điểm và gửi kết quả. Bản tổng hợp toàn bộ ở tab <b>📋 Tổng hợp QA</b>.</p>
+      <h3>H. Xuất Excel, gửi mail, sao lưu</h3>
+      <p>Xuất Excel tổng hợp ở tab <b>📋 Tổng hợp QA</b> / <b>🛠️ CAPA</b>; soạn mail ở tab <b>✉️ Mail</b> (tạo file <b>.eml</b> kèm Excel — mở file .eml để Outlook soạn thư có sẵn người nhận + đính kèm). Tab <b>🔧 Cài đặt</b> có sao lưu / phục hồi toàn bộ dữ liệu ra file <b>.json</b> và thư mục lưu Excel/.eml.</p>
 
-      <h3>I. Gửi mail (mở Outlook kèm file)</h3>
-      <p>Đặt email người nhận &amp; mẫu tiêu đề ở tab <b>🔧 Cài đặt</b>. Bấm <span class="kbd">✉️ Gửi mail</span> → app tạo file <b>.eml</b> đã đính kèm sẵn Excel. <b>Mở file .eml vừa tải</b> → Outlook mở cửa sổ soạn thư có sẵn người nhận + file đính kèm.</p>
-
-      <h3>J. Cài đặt nơi lưu &amp; sao lưu</h3>
-      <p>Tab Cài đặt cho phép đổi file CSV, <b>chọn thư mục lưu Excel/.eml</b>, chỉnh ngưỡng đánh giá, và <b>sao lưu / phục hồi</b> toàn bộ dữ liệu (kèm ảnh) ra file <b>.json</b>.</p>
-
-      <h3>K. ⌨️ Tối ưu cho Chrome trên Windows</h3>
-      <p><b>Phím tắt (tab Chấm điểm):</b></p>
+      <h3>I. Đồng bộ &amp; làm việc nhiều máy</h3>
       <ul>
-        <li><span class="kbd">↑</span> / <span class="kbd">↓</span> — chọn mục (mục đang chọn có viền xanh, tự cuộn tới đúng chủ đề).</li>
-        <li><span class="kbd">2</span> / <span class="kbd">1</span> / <span class="kbd">0</span> — chấm điểm mục đang chọn rồi <b>tự nhảy sang mục kế tiếp</b>.</li>
-        <li><span class="kbd">←</span> / <span class="kbd">→</span> — chuyển chủ đề (Trước / Tiếp).</li>
-        <li><span class="kbd">Ctrl</span>+<span class="kbd">S</span> — lưu đánh giá (ở tab <b>Lỗi nhanh</b>: lưu danh sách lỗi).</li>
+        <li>Dữ liệu lưu trên Supabase; thanh <b>☁️</b> ở góc trên hiện trạng thái (⚡ Realtime, ⏳ N chờ gửi, mức Data Saving…).</li>
+        <li>Mất mạng giữa chừng: thay đổi được giữ trên máy và <b>tự gửi lại</b> khi có mạng — đừng xoá cache trình duyệt khi còn "⏳ chờ gửi".</li>
+        <li>Bài bạn đang chấm dở <b>không bị ghi đè</b> bởi dữ liệu từ máy khác; nếu có cập nhật mới, app báo và giữ nguyên bản của bạn.</li>
       </ul>
+
+      <h3>J. ⌨️ Phím tắt (tab Chấm điểm)</h3>
       <ul>
-        <li><b>Kéo-thả ảnh:</b> kéo ảnh từ máy thả thẳng vào một mục (tab Chấm điểm) hoặc form "Thêm lỗi" (tab Lỗi nhanh) để đính kèm.</li>
-        <li><b>Nhớ thư mục:</b> Chrome tự mở lại đúng vị trí file CSV / thư mục lưu Excel của lần trước.</li>
-        <li><b>Chống mất dữ liệu:</b> nếu còn thay đổi chấm điểm hoặc lỗi nhanh <b>chưa lưu</b> mà đóng/đổi trang, trình duyệt sẽ hỏi xác nhận.</li>
-        <li><b>In báo cáo:</b> nút <span class="kbd">🖨️ In báo cáo</span> ở tab Tổng hợp QA in bản gọn (tự ẩn thanh công cụ &amp; nút).</li>
+        <li><span class="kbd">↑</span> / <span class="kbd">↓</span> — chọn mục (viền xanh, tự cuộn tới đúng chủ đề).</li>
+        <li><span class="kbd">2</span> / <span class="kbd">1</span> / <span class="kbd">0</span> / <span class="kbd">N</span> — chấm điểm mục đang chọn (N = Không áp dụng) rồi <b>tự nhảy sang mục kế tiếp</b>.</li>
+        <li><span class="kbd">←</span> / <span class="kbd">→</span> — chuyển chủ đề.</li>
+        <li><span class="kbd">Ctrl</span>+<span class="kbd">S</span> — lưu nháp.</li>
+        <li><b>Chống mất dữ liệu:</b> còn thay đổi chưa lưu/chưa gửi mà đóng trang, trình duyệt sẽ hỏi xác nhận.</li>
       </ul>
     </div>
   </div>
@@ -700,7 +727,7 @@ const $ = s=>document.querySelector(s);
 const $$ = s=>Array.from(document.querySelectorAll(s));
 const esc = s=> (s==null?"":String(s)).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),3200);}
-function clsOf(s){return s===2?"Tuân thủ":s===1?"Cần cải thiện":s===0?"Chưa tuân thủ":"";}
+function clsOf(s,na){if(na)return "N/A";return s===2?"Tuân thủ":s===1?"Cần cải thiện":s===0?"Chưa tuân thủ":"";}
 function todayISO(){const d=new Date();const z=n=>String(n).padStart(2,"0");return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate());}
 function safeName(s){return String(s||"").replace(/[^\wÀ-ỹ]+/g,"_").replace(/^_+|_+$/g,"")||"area";}
 
@@ -798,7 +825,9 @@ function recordsForPeriodArea(period,code){
 function latestByArea(code,period){return recordsForPeriodArea(period||activePeriodId(),code);}
 function recordsForBatch(batch){return RECORDS.filter(r=>r.batch===batch);}
 function scoreForRecords(recs){if(!recs||!recs.length)return null;
-  const actual=recs.reduce((s,r)=>s+(r.score||0),0);const poss=recs.length*2;
+  // Chỉ tính câu ĐÃ CHẤM 0/1/2: câu N/A (score=null, cls="N/A") và câu chưa chấm không vào mẫu số.
+  const scored=recs.filter(r=>r.score!=null);if(!scored.length)return null;
+  const actual=scored.reduce((s,r)=>s+r.score,0);const poss=scored.length*2;
   return {actual,poss,pct:poss?actual/poss:0,n:recs.length,batch:recs[0].batch,date:recs[0].date};}
 function areaScore(code,period){return scoreForRecords(latestByArea(code,period));}
 function areaScoreForBatch(batch){return scoreForRecords(recordsForBatch(batch));}
@@ -897,7 +926,7 @@ function areaFormSig(code,previewKey){
   const sub=subOf(code,period,sk);
   const prev=sk?recordsForBatch(period+"|"+code+"|"+sk):latestByArea(code,period);
   return JSON.stringify([period,sk,sub.status,preview||!canEditFunction(code,period,sk),
-    prev.map(r=>[r.cat,r.req,r.score,r.finding,r.evidence,(r.images||[]).map(im=>im.path||(im.data?im.data.length:0))])]);
+    prev.map(r=>[r.cat,r.req,r.score,r.cls,r.finding,r.evidence,(r.images||[]).map(im=>im.path||(im.data?im.data.length:0))])]);
 }
 let syncStaleNotified=false;
 /* Gọi sau mỗi lượt đồng bộ: KHÔNG BAO GIỜ ghi đè form khi người dùng đang chấm dở (dirtyEval); nếu form
@@ -930,25 +959,33 @@ function loadAreaForm(code,previewKey){
   $("#areaDesc").innerHTML="Kỳ <b>"+esc(periodLabel(period))+"</b> · Số câu hỏi: <b>"+a.items.length+"</b> · Điểm chuẩn tối đa: <b>"+(a.items.length*2)+"</b> · <span class=\"tag "+stx[1]+"\">"+stx[0]+"</span>"+modeTxt;
   const prev=submitterKey?recordsForBatch(period+"|"+code+"|"+submitterKey):latestByArea(code,period);
   const pmap={};
-  prev.forEach(r=>{pmap[r.cat+"||"+r.req]={score:r.score,finding:r.finding,evidence:r.evidence,images:r.images||[]};});
+  prev.forEach(r=>{pmap[r.cat+"||"+r.req]={score:r.score,na:r.cls==="N/A",finding:r.finding,evidence:r.evidence,images:r.images||[]};});
+  // Câu chưa có bản ghi = CHƯA CHẤM (score=null) — không còn mặc định 2 điểm; N/A lưu dạng score=null + cls="N/A".
   a.items.forEach(it=>{const p=pmap[it.cat+"||"+it.req]||{};
-    CURRENT.rows.push({cat:it.cat,req:it.req,score:(p.score==null?2:p.score),finding:p.finding||"",evidence:p.evidence||"",images:(p.images||[]).slice()});});
+    CURRENT.rows.push({cat:it.cat,req:it.req,hint:it.hint||"",score:(p.na||p.score==null)?null:p.score,na:!!p.na,finding:p.finding||"",evidence:p.evidence||"",images:(p.images||[]).slice()});});
+  CURRENT.filter="all";const asi=$("#autoSaveInfo");if(asi)asi.textContent="";
   renderChecklist();
 }
+function noteOpenState(r){return r.score===0||r.score===1||!!(r.finding||r.evidence||(r.images&&r.images.length)||r._open);}
 function itemHtml(i,n){const r=CURRENT.rows[i];const ro=CURRENT.readOnly;const dis=ro?"disabled":"";
-  return `<div class="qitem" data-i="${i}">
-    <div class="qreq"><span class="qn">${n}</span> ${esc(r.req)}</div>
+  const un=(r.score==null&&!r.na);
+  return `<div class="qitem${un?' unscored':''}${noteOpenState(r)?'':' collapsed'}" data-i="${i}">
+    <div class="qreq"><span class="qn">${n}</span> ${esc(r.req)}${r.hint?`<div class="qhint">💡 ${esc(r.hint)}</div>`:""}</div>
     <div class="qctrl">
       <div class="scoresel">
-        <button class="s2 ${r.score===2?'on':''}" data-i="${i}" data-s="2" ${dis}>2</button>
-        <button class="s1 ${r.score===1?'on':''}" data-i="${i}" data-s="1" ${dis}>1</button>
-        <button class="s0 ${r.score===0?'on':''}" data-i="${i}" data-s="0" ${dis}>0</button>
+        <button class="s2 ${r.score===2?'on':''}" data-i="${i}" data-s="2" ${dis}><b>2</b><i>Đạt</i></button>
+        <button class="s1 ${r.score===1?'on':''}" data-i="${i}" data-s="1" ${dis}><b>1</b><i>Cần cải thiện</i></button>
+        <button class="s0 ${r.score===0?'on':''}" data-i="${i}" data-s="0" ${dis}><b>0</b><i>Không đạt</i></button>
+        <button class="sna ${r.na?'on':''}" data-i="${i}" data-s="na" ${dis}><b>N/A</b><i>Không áp dụng</i></button>
       </div>
-      <textarea data-i="${i}" data-f="finding" placeholder="Phát hiện / quan sát" ${dis}>${esc(r.finding)}</textarea>
+      ${ro?"":`<button class="notebtn" data-note="${i}" title="Mở/ẩn ghi chú &amp; ảnh">📝</button>`}
     </div>
-    <div class="qev"><input data-i="${i}" data-f="evidence" value="${esc(r.evidence)}" placeholder="Bằng chứng" ${dis}>
-      ${ro?"":`<label class="imgbtn">📎 Đính/Dán ảnh<input type="file" accept="image/*" multiple data-img="${i}" style="display:none"></label>`}
-      <div class="imgwrap" data-i="${i}">${thumbsHtml(r.images,i,ro)}</div>
+    <div class="qnotes">
+      <textarea data-i="${i}" data-f="finding" placeholder="Phát hiện / quan sát" ${dis}>${esc(r.finding)}</textarea>
+      <div class="qev"><input data-i="${i}" data-f="evidence" value="${esc(r.evidence)}" placeholder="Bằng chứng" ${dis}>
+        ${ro?"":`<label class="imgbtn">📎 Đính/Dán ảnh<input type="file" accept="image/*" multiple data-img="${i}" style="display:none"></label>`}
+        <div class="imgwrap" data-i="${i}">${thumbsHtml(r.images,i,ro)}</div>
+      </div>
     </div>
   </div>`;}
 function footButtonsHtml(){
@@ -966,19 +1003,77 @@ function renderChecklist(){
   const steps=cats.map((g,k)=>{
     const its=g.items.map((idx,n)=>itemHtml(idx,n+1)).join("");
     const last=(k===cats.length-1);
-    const foot=last
-      ? `<div class="submitwrap">${footButtonsHtml()}</div>`
-      : `<div class="submitwrap"><button class="btn nextbtn" data-go="${k+1}">Chủ đề tiếp theo →</button></div>`;
-    return `<div class="step" data-step="${k}"><div class="stephead">Chủ đề ${k+1}/${cats.length}: ${esc(g.cat)}</div>${its}${foot}</div>`;
+    const foot=last?"":`<div class="submitwrap"><button class="btn nextbtn" data-go="${k+1}">Chủ đề tiếp theo →</button></div>`;
+    const bulk=CURRENT.readOnly?"":`<button class="btn sm gray bulkbtn" data-bulk="${k}" title="Chỉ đặt 2 cho các câu CHƯA CHẤM của chủ đề này (có hỏi xác nhận)">✔ Chấm cả chủ đề = 2 (Đạt)</button>`;
+    return `<div class="step" data-step="${k}"><div class="stephead"><span>Chủ đề ${k+1}/${cats.length}: ${esc(g.cat)}</span>${bulk}</div>${its}${foot}</div>`;
   }).join("");
   $("#checklistHost").innerHTML=`
+    <div class="topprog">
+      <div class="tprow"><div class="tpbar"><div class="tpfill" id="tpFill"></div></div><div class="tptext" id="tpText"></div></div>
+      <div class="qfilter" id="qfilter">
+        <button class="fchip on" data-filter="all">Tất cả</button>
+        <button class="fchip" data-filter="todo">⏳ Chưa chấm (<span id="fcTodo">0</span>)</button>
+        <button class="fchip" data-filter="fail">⚠️ Chưa đạt 0/1 (<span id="fcFail">0</span>)</button>
+      </div>
+      <div id="filterEmpty" class="muted" style="display:none;margin-top:8px">🎉 Không có câu nào thuộc nhóm này.</div>
+    </div>
     <div class="stepper" id="stepper">${chips}</div>
     <div class="steps" id="steps">${steps}</div>
     <div class="stepnav"><button class="btn sm gray" id="prevStep">← Trước</button>
       <span id="stepCounter" class="pill"></span>
       <button class="btn sm" id="nextStep">Tiếp →</button></div>
-    <div class="kbhint">⌨️ Phím tắt: <b>↑/↓</b> chọn mục · <b>2/1/0</b> chấm điểm · <b>←/→</b> đổi chủ đề · <b>Ctrl+S</b> lưu</div>`;
+    <div class="submitwrap" id="footBar">${footButtonsHtml()}</div>
+    <div class="kbhint">⌨️ Phím tắt: <b>↑/↓</b> chọn mục · <b>2/1/0</b> chấm điểm · <b>N</b> = N/A · <b>←/→</b> đổi chủ đề · <b>Ctrl+S</b> lưu nháp</div>`;
   bindChecklist();updateCatTotals();updateLive();updateStepIndicators(0);hydrateThumbs();
+}
+/* Chấm 1 câu: v = 0|1|2|"na". Mọi đường chấm (bấm nút, phím tắt, chấm cả chủ đề) đều đi qua đây. */
+function setScore(i,v){
+  const r=CURRENT.rows[i];if(!r||CURRENT.readOnly)return;
+  if(v==="na"){r.na=true;r.score=null;}else{r.na=false;r.score=v;}
+  dirtyEval=true;refreshItem(i);updateCatTotals();updateLive();
+}
+function refreshItem(i){
+  const r=CURRENT.rows[i];const it=document.querySelector('#steps .qitem[data-i="'+i+'"]');if(!it)return;
+  it.querySelectorAll(".scoresel button").forEach(b=>{const s=b.dataset.s;b.classList.toggle("on",s==="na"?!!r.na:(!r.na&&r.score===+s));});
+  it.classList.toggle("unscored",r.score==null&&!r.na);
+  it.classList.toggle("collapsed",!noteOpenState(r));
+}
+function bulkSetStep(k){
+  if(CURRENT.readOnly)return;
+  const g=(CURRENT.cats||[])[k];if(!g)return;
+  const todo=g.items.filter(i=>CURRENT.rows[i].score==null&&!CURRENT.rows[i].na);
+  if(!todo.length){toast("Chủ đề này không còn câu nào chưa chấm");return;}
+  if(!confirm("Đặt "+todo.length+" câu CHƯA CHẤM của chủ đề «"+g.cat+"» thành 2 (Đạt)?\n\nChỉ dùng khi bạn đã kiểm tra thực tế và TOÀN BỘ các câu này đều đạt. Câu đã chấm (kể cả 0/1/N/A) không bị đổi."))return;
+  todo.forEach(i=>setScore(i,2));
+  toast("✔ Đã đặt "+todo.length+" câu = 2 (Đạt) cho chủ đề này");
+}
+function applyFilter(mode){
+  CURRENT.filter=mode;
+  const host=$("#checklistHost");if(!host)return;host.classList.toggle("filtering",mode!=="all");
+  const match=r=>mode==="todo"?(r.score==null&&!r.na):(mode==="fail"?(r.score===0||r.score===1):true);
+  let shown=0;
+  $$("#steps .qitem").forEach(el=>{const ok=match(CURRENT.rows[+el.dataset.i]);el.classList.toggle("fhide",!ok);if(ok)shown++;});
+  $$("#steps .step").forEach(st=>st.classList.toggle("fhide",mode!=="all"&&!st.querySelector(".qitem:not(.fhide)")));
+  const fe=$("#filterEmpty");if(fe)fe.style.display=(mode!=="all"&&!shown)?"block":"none";
+  $$("#qfilter [data-filter]").forEach(b=>b.classList.toggle("on",b.dataset.filter===mode));
+  if(mode==="all")gotoStep(CURRENT.step||0);
+}
+// Chặn Submit khi còn câu chưa chấm: lọc sẵn các câu đó và nhảy tới câu đầu tiên.
+function ensureComplete(){
+  const miss=CURRENT.rows.map((r,i)=>(r.score==null&&!r.na)?i:-1).filter(i=>i>=0);
+  if(!miss.length)return true;
+  applyFilter("todo");
+  toast("⏳ Còn "+miss.length+" câu CHƯA CHẤM — chấm hết (hoặc chọn N/A) rồi mới Submit được. Đã lọc sẵn các câu này.");
+  setActive(miss[0]);const el=document.querySelector('#steps .qitem[data-i="'+miss[0]+'"]');if(el)el.scrollIntoView({behavior:"smooth",block:"center"});
+  return false;
+}
+function updateTopProgress(){
+  const rows=CURRENT.rows||[];let scored=0,na=0,todo=0,fail=0;
+  rows.forEach(r=>{if(r.na)na++;else if(r.score==null)todo++;else{scored++;if(r.score<2)fail++;}});
+  const total=rows.length,done=scored+na;
+  const f=$("#tpFill");if(f){f.style.width=(total?done/total*100:0).toFixed(1)+"%";f.style.background=todo?"#d99a2b":"#16a34a";}
+  const t=$("#tpText");if(t)t.innerHTML="Đã chấm <b>"+done+"/"+total+"</b>"+(na?" (N/A "+na+")":"")+(todo?" · còn <b style='color:#b45309'>"+todo+"</b> câu":" · ✅ đã chấm hết")+(fail?" · ⚠️ <b style='color:#b91c1c'>"+fail+"</b> câu chưa đạt":"");
+  const a=$("#fcTodo"),b=$("#fcFail");if(a)a.textContent=todo;if(b)b.textContent=fail;
 }
 function setActive(i){activeItem=i;$$("#steps .qitem").forEach(el=>el.classList.toggle("kactive",+el.dataset.i===i));}
 function moveActive(dir){const rows=CURRENT.rows;if(!rows||!rows.length)return;
@@ -1010,11 +1105,9 @@ function onKey(e){
   if(e.key==="ArrowLeft"){e.preventDefault();gotoStep((CURRENT.step||0)-1);return;}
   if(e.key==="ArrowDown"){e.preventDefault();moveActive(1);return;}
   if(e.key==="ArrowUp"){e.preventDefault();moveActive(-1);return;}
-  if(e.key==="2"||e.key==="1"||e.key==="0"){if(activeItem==null){moveActive(0);return;}e.preventDefault();
-    const s=+e.key;CURRENT.rows[activeItem].score=s;
-    const it=document.querySelector('#steps .qitem[data-i="'+activeItem+'"]');
-    if(it)it.querySelectorAll(".scoresel button").forEach(b=>b.classList.toggle("on",+b.dataset.s===s));
-    dirtyEval=true;updateCatTotals();updateLive();moveActive(1);return;}
+  if(e.key==="2"||e.key==="1"||e.key==="0"||e.key==="n"||e.key==="N"){if(activeItem==null){moveActive(0);return;}e.preventDefault();
+    if(CURRENT.readOnly)return;
+    setScore(activeItem,(e.key==="n"||e.key==="N")?"na":+e.key);moveActive(1);return;}
 }
 function gotoStep(k){const cats=CURRENT.cats;if(!cats)return;k=Math.max(0,Math.min(cats.length-1,k));
   const el=document.querySelector('#steps .step[data-step="'+k+'"]');
@@ -1027,15 +1120,17 @@ function updateStepIndicators(k){const cats=CURRENT.cats;if(!cats)return;CURRENT
   const pv=$("#prevStep"),nx=$("#nextStep");if(pv)pv.disabled=(k===0);if(nx)nx.style.visibility=(k===cats.length-1)?"hidden":"visible";}
 function bindChecklist(){
   $$("#checklistHost .scoresel button").forEach(b=>b.onclick=()=>{
-    const i=+b.dataset.i,s=+b.dataset.s;CURRENT.rows[i].score=s;
-    const grp=b.closest(".scoresel");grp.querySelectorAll("button").forEach(x=>x.classList.remove("on"));
-    b.classList.add("on");dirtyEval=true;setActive(+b.dataset.i);updateCatTotals();updateLive();});
+    const i=+b.dataset.i;setScore(i,b.dataset.s==="na"?"na":+b.dataset.s);setActive(i);});
   $$('#checklistHost textarea[data-f],#checklistHost input[data-f]').forEach(el=>el.oninput=()=>{CURRENT.rows[+el.dataset.i][el.dataset.f]=el.value;dirtyEval=true;});
   $$('#checklistHost input[type=file][data-img]').forEach(inp=>inp.onchange=async()=>{
     const i=+inp.dataset.img;const files=Array.from(inp.files||[]);CURRENT.rows[i].images=CURRENT.rows[i].images||[];
     for(const f of files){if(!f.type.startsWith("image/"))continue;try{const im=await attachImage(f,CURRENT.period,CURRENT.code);CURRENT.rows[i].images.push(im);}catch(e){}}
     inp.value="";refreshThumbs(i);});
   $("#checklistHost").onclick=e=>{
+    const nb=e.target.closest("[data-note]");
+    if(nb){const i=+nb.dataset.note;const r=CURRENT.rows[i];r._open=!r._open;refreshItem(i);return;}
+    const bk=e.target.closest("[data-bulk]");if(bk){bulkSetStep(+bk.dataset.bulk);return;}
+    const fc=e.target.closest("[data-filter]");if(fc){applyFilter(fc.dataset.filter);return;}
     const rm=e.target.closest("[data-rm]");
     if(rm){if(CURRENT.readOnly)return;const p=rm.dataset.rm.split("-");const i=+p[0],j=+p[1];if(CURRENT.rows[i].images)CURRENT.rows[i].images.splice(j,1);refreshThumbs(i);return;}
     const v=e.target.closest("img[data-view]");if(v){openLightboxFor(v);return;}};
@@ -1043,7 +1138,7 @@ function bindChecklist(){
   if(prev)prev.onclick=()=>gotoStep(CURRENT.step-1);
   if(next)next.onclick=()=>gotoStep(CURRENT.step+1);
   $$('#steps .nextbtn').forEach(b=>b.onclick=()=>gotoStep(+b.dataset.go));
-  $$('#stepper .schip').forEach(c=>c.onclick=()=>gotoStep(+c.dataset.step));
+  $$('#stepper .schip').forEach(c=>c.onclick=()=>{if(CURRENT.filter&&CURRENT.filter!=="all")applyFilter("all");gotoStep(+c.dataset.step);});
   const steps=$("#steps");if(steps)steps.onscroll=()=>{const w=steps.clientWidth||1;const k=Math.round(steps.scrollLeft/w);if(k!==CURRENT.step)updateStepIndicators(k);};
   const db=$("#draftBtn");if(db)db.onclick=saveDraft;
   const sb=$("#submitBtn");if(sb)sb.onclick=submitResult;
@@ -1165,19 +1260,30 @@ async function uploadImageToStorage(blob,period,code,seq,origName){
   catch(e){return null;/* không chặn lưu record — ảnh vẫn giữ base64 cục bộ, không mất dữ liệu */}
 }
 function updateCatTotals(){const cats=CURRENT.cats;if(!cats)return;cats.forEach((g,k)=>{
-  let ca=0;g.items.forEach(i=>ca+=(CURRENT.rows[i].score||0));const cp=g.items.length*2;
-  const b=document.querySelector('.csb[data-step="'+k+'"]');if(b){b.textContent=ca+"/"+cp;b.className="csb"+(ca===cp?" okb":"");}});}
+  let actual=0,scored=0,na=0,todo=0,fail=0,worst=2;
+  g.items.forEach(i=>{const r=CURRENT.rows[i];if(r.na)na++;else if(r.score==null)todo++;else{scored++;actual+=r.score;if(r.score<2){fail++;if(r.score<worst)worst=r.score;}}});
+  const b=document.querySelector('.csb[data-step="'+k+'"]');if(!b)return;
+  let txt,cls="csb";
+  if(todo){txt="còn "+todo;cls+=" todo";}
+  else if(!scored){txt="N/A";cls+=" na";}
+  else{txt=actual+"/"+(scored*2);cls+=fail?(worst===0?" bad":" mid"):" okb";}
+  b.textContent=txt;b.className=cls;
+  const chip=b.closest(".schip");if(chip){chip.classList.toggle("todo",todo>0);
+    chip.title=todo?("Còn "+todo+" câu chưa chấm"):(fail?("Đã chấm hết — "+fail+" câu chưa đạt"):"Đã chấm hết — đạt toàn bộ");}
+});}
 function updateLive(){
-  const rows=CURRENT.rows;const actual=rows.reduce((s,r)=>s+(r.score||0),0);const poss=rows.length*2;
-  const pct=poss?actual/poss:0;const r=ratingOf(pct);
+  const rows=CURRENT.rows;let actual=0,scored=0,todo=0,nc=0;
+  rows.forEach(r=>{if(r.na)return;if(r.score==null){todo++;return;}scored++;actual+=r.score;if(r.score<2)nc++;});
+  const poss=scored*2;const pct=poss?actual/poss:0;const r=ratingOf(pct);
   let bar=$("#liveBar");if(!bar){bar=document.createElement("div");bar.id="liveBar";bar.className="livebar";document.body.appendChild(bar);}
-  const nc=rows.filter(x=>x.score<2).length;
+  const badge=todo?`<span class="badge b-imp">⏳ Còn ${todo} câu chưa chấm</span>`:(scored?`<span class="badge ${r[1]}">${r[0]}</span>`:`<span class="badge b-imp">Chưa chấm</span>`);
   bar.innerHTML=`<div class="stat"><span class="k">Điểm thực tế</span><span class="v">${actual}</span></div>
     <div class="stat"><span class="k">Điểm chuẩn</span><span class="v">${poss}</span></div>
-    <div class="stat"><span class="k">Phần trăm</span><span class="v">${(pct*100).toFixed(1)}%</span></div>
+    <div class="stat"><span class="k">Phần trăm</span><span class="v">${scored?(pct*100).toFixed(1)+"%":"—"}</span></div>
     <div class="stat"><span class="k">Số mục cần CAPA</span><span class="v">${nc}</span></div>
-    <span class="badge ${r[1]}">${r[0]}</span>`;
+    ${badge}`;
   bar.style.display=(CURRENT.code && $("#view-input").classList.contains("active"))?"flex":"none";
+  updateTopProgress();
 }
 async function writeCurrentRows(statusOverride){
   const code=CURRENT.code;const a=areaByCode(code);if(!a)return null;
@@ -1185,33 +1291,56 @@ async function writeCurrentRows(statusOverride){
   const submitterKey=CURRENT.submitterKey||null;
   if(CURRENT.preview){toast("Chỉ xem — không thể sửa bài của người khác ở đây");return null;}
   if(!canEditFunction(code,period,submitterKey)){toast("Function "+code+" hiện không thể sửa (đã gửi/đã chốt)");return null;}
+  const curStatus=subOf(code,period,submitterKey).status;const finalStatus=statusOverride||curStatus||"DRAFT";
+  if(finalStatus==="SUBMITTED"&&!ensureComplete())return null; // không bao giờ ghi trạng thái Đã gửi khi còn câu chưa chấm
   const date=$("#inDate").value||todayISO();const auditor=(CURRENT_USER&&CURRENT_USER.name)||$("#inAuditor").value.trim()||"(chưa nhập)";
   const batch=period+"|"+code+(submitterKey?("|"+submitterKey):"");
   for(let i=0;i<CURRENT.rows.length;i++){const r=CURRENT.rows[i];
+    // N/A lưu dạng score=null + cls="N/A" (cột score trên server chỉ nhận 0/1/2); chưa chấm = score=null + cls="".
     await dbPut({id:batch+"|"+i,batch,date,auditor,code,full:a.full,period,submitterKey,
-      cat:r.cat,req:r.req,score:r.score,cls:clsOf(r.score),finding:r.finding||"",evidence:r.evidence||"",images:(r.images||[])});}
+      cat:r.cat,req:r.req,score:r.na?null:r.score,cls:clsOf(r.score,r.na),finding:r.finding||"",evidence:r.evidence||"",images:(r.images||[])});}
   await reloadRecords();await writeFile();
-  const curStatus=subOf(code,period,submitterKey).status;const finalStatus=statusOverride||curStatus||"DRAFT";
   const patch={auditor,updatedAt:new Date().toISOString(),status:finalStatus};
   if(finalStatus==="SUBMITTED"&&curStatus!=="SUBMITTED"){patch.submittedAt=todayISO();patch.submittedBy=auditor;}
   await setSubStatus(code,period,patch,submitterKey,CURRENT_USER&&CURRENT_USER.name);
-  return areaScoreForBatch(batch);
+  return {sc:areaScoreForBatch(batch)};
 }
+function scoreToastTxt(sc){if(!sc)return "chưa có câu nào được chấm điểm";const rr=ratingOf(sc.pct);return sc.actual+"/"+sc.poss+" ("+(sc.pct*100).toFixed(1)+"% · "+rr[0]+")";}
 async function saveDraft(){
-  const sc=await writeCurrentRows("DRAFT");if(!sc)return;const rr=ratingOf(sc.pct);
-  toast("💾 Đã lưu nháp "+CURRENT.code+": "+sc.actual+"/"+sc.poss+" ("+(sc.pct*100).toFixed(1)+"% · "+rr[0]+")");
+  const res=await writeCurrentRows("DRAFT");if(!res)return;
+  toast("💾 Đã lưu nháp "+CURRENT.code+": "+scoreToastTxt(res.sc));
   dirtyEval=false;maybeAutoPush();renderAll();loadAreaForm(CURRENT.code);
 }
 async function submitResult(){
+  if(!ensureComplete())return;
   if(!confirm("Submit kết quả chấm điểm Function "+CURRENT.code+" lên hệ thống?\n\nSau khi Submit, bạn sẽ KHÔNG tự sửa lại được — chỉ Admin xem/sửa được cho tới khi chốt."))return;
-  const sc=await writeCurrentRows("SUBMITTED");if(!sc)return;const rr=ratingOf(sc.pct);
-  toast("📤 Đã gửi kết quả "+CURRENT.code+": "+sc.actual+"/"+sc.poss+" ("+(sc.pct*100).toFixed(1)+"% · "+rr[0]+")");
+  const res=await writeCurrentRows("SUBMITTED");if(!res)return;
+  toast("📤 Đã gửi kết quả "+CURRENT.code+": "+scoreToastTxt(res.sc));
   dirtyEval=false;maybeAutoPush();renderAll();loadAreaForm(CURRENT.code);
 }
 async function adminSaveEdit(){
-  const sc=await writeCurrentRows(null);if(!sc)return;const rr=ratingOf(sc.pct);
-  toast("📤 Đã Submit lên hệ thống "+CURRENT.code+": "+sc.actual+"/"+sc.poss+" ("+(sc.pct*100).toFixed(1)+"% · "+rr[0]+")");
+  const res=await writeCurrentRows(null);if(!res)return;
+  toast("📤 Đã Submit lên hệ thống "+CURRENT.code+": "+scoreToastTxt(res.sc));
   dirtyEval=false;maybeAutoPush();renderAll();loadAreaForm(CURRENT.code);
+}
+/* Tự lưu nháp định kỳ (45s + khi ẩn tab): chỉ khi đang chấm dở trên form còn là NHÁP của chính mình.
+   Không vẽ lại form (giữ nguyên chủ đề/vị trí cuộn), không ép Submit. */
+let autosaving=false;
+function rowsSig(){return JSON.stringify((CURRENT.rows||[]).map(r=>[r.score,!!r.na,r.finding,r.evidence,(r.images||[]).length]));}
+async function autosaveDraft(){
+  if(autosaving||!dirtyEval||!CURRENT.code||CURRENT.readOnly||CURRENT.preview)return;
+  const tab=document.querySelector(".tab.active");if(!tab||tab.dataset.tab!=="input")return;
+  if(subOf(CURRENT.code,CURRENT.period,CURRENT.submitterKey).status!=="DRAFT")return;
+  autosaving=true;
+  try{
+    const snap=rowsSig();
+    const res=await writeCurrentRows("DRAFT");
+    if(res){
+      if(rowsSig()===snap){dirtyEval=false;CURRENT.sig=areaFormSig(CURRENT.code,undefined);} // người dùng gõ tiếp trong lúc lưu -> vẫn coi là chưa lưu
+      const el=$("#autoSaveInfo");if(el)el.textContent="💾 Tự lưu nháp lúc "+new Date().toLocaleTimeString("vi-VN");
+      maybeAutoPush();
+    }
+  }finally{autosaving=false;}
 }
 function discardCurrentEdit(){
   const code=CURRENT.code;if(!code)return;
@@ -1656,10 +1785,11 @@ function markChkDirty(){chkDirty=true;updateChkSaveBtn();}
 function saveChkChanges(){saveChk();chkDirty=false;updateChkSaveBtn();fillAreaSelects();toast("💾 Đã lưu thay đổi vào checklist");}
 function renderEdit(){
   const code=$("#editArea").value;const a=areaByCode(code);if(!a){$("#editTable").innerHTML="";return;}
-  const head=`<tr><th style="width:34px">#</th><th style="width:200px">Chủ đề</th><th>Yêu cầu kiểm tra</th><th style="width:70px">Thứ tự</th><th style="width:60px"></th></tr>`;
+  const head=`<tr><th style="width:34px">#</th><th style="width:200px">Chủ đề</th><th>Yêu cầu kiểm tra</th><th style="width:240px">Gợi ý tiêu chí chấm (tuỳ chọn)</th><th style="width:70px">Thứ tự</th><th style="width:60px"></th></tr>`;
   const rows=a.items.map((it,i)=>`<tr><td class="center">${i+1}</td>
     <td><input data-i="${i}" data-k="cat" value="${esc(it.cat)}" style="width:100%"></td>
     <td><textarea data-i="${i}" data-k="req" style="width:100%">${esc(it.req)}</textarea></td>
+    <td><textarea data-i="${i}" data-k="hint" style="width:100%" placeholder="VD: Đạt = ...; Cần cải thiện = ...; Không đạt = ...">${esc(it.hint||"")}</textarea></td>
     <td class="center" style="white-space:nowrap">
       <button class="btn sm gray" data-up="${i}" title="Lên" ${i===0?"disabled":""}>▲</button>
       <button class="btn sm gray" data-down="${i}" title="Xuống" ${i===a.items.length-1?"disabled":""}>▼</button>
@@ -2276,6 +2406,7 @@ function startPoller(){
 document.addEventListener("visibilitychange",()=>{
   // force=false: dùng delta-sync như poller, không ép full-select cả 7 bảng mỗi lần đổi tab —
   // cursor delta vẫn còn nguyên trong lúc tab ẩn nên không mất dữ liệu, chỉ đỡ tốn egress hơn nhiều.
+  if(document.hidden)autosaveDraft().catch(()=>{});
   if(!document.hidden&&sbConfigured()&&SESSION_READY&&!dirtyEval&&!syncBusy)pullTables(ALL_SYNC_TABLES,true,false).catch(()=>{});
 });
 async function doSync(silent){await flushPending();await pullAll(silent);}
@@ -2597,11 +2728,34 @@ function renderCandidateReview(pid,admin){
     return `<div style="margin-bottom:16px">
       <div style="font-weight:700;margin-bottom:6px">${esc(g.area.code)} — ${esc(g.area.full)} <span class="muted" style="font-weight:400">(${g.cands.length} bài đã chấm)</span>${mergedTag}${mergeBtn}</div>
       <div style="overflow-x:auto"><table class="data"><tr><th>Auditor</th><th>Điểm</th><th class="center">Trạng thái</th><th class="center">Thao tác</th></tr>${rows}</table></div>
+      ${compareTableHtml(g.area,pid,g.cands)}
     </div>`;
   }).join("");
   $$('#apCandidates [data-cview]').forEach(b=>b.onclick=()=>{const [code,key]=b.dataset.cview.split("|");switchTab("input");$("#inArea").value=code;loadAreaForm(code,key);updateLive();toast("Đang xem bài chấm của khu "+code);});
   $$('#apCandidates [data-cpick]').forEach(b=>b.onclick=()=>{const [code,key]=b.dataset.cpick.split("|");promoteCandidate(code,key);});
   $$('#apCandidates [data-cmerge]').forEach(b=>b.onclick=()=>mergeCandidates(b.dataset.cmerge));
+}
+/* Bảng so sánh từng câu giữa các Auditor cùng chấm 1 khu vực — câu lệch ≥2 điểm (VD người 2, người 0) lên đầu,
+   tô nền, để Admin chỉ cần xem lại đúng các câu bất đồng thay vì đọc hết cả checklist. */
+function compareTableHtml(a,pid,cands){
+  if(cands.length<2)return "";
+  const per=cands.map(c=>{const m={};recordsForBatch(pid+"|"+a.code+"|"+c.submitterKey).forEach(r=>{m[(r.cat||"")+"||"+r.req]=r;});return {name:c.auditor||c.submitterName||c.submitterKey,m};});
+  const rows=a.items.map((it,i)=>{
+    const rs=per.map(x=>x.m[(it.cat||"")+"||"+it.req]);
+    const nums=rs.map(r=>(r&&r.score!=null)?r.score:null).filter(v=>v!=null);
+    return {i,it,rs,diff:nums.length>=2?Math.max(...nums)-Math.min(...nums):0,low:nums.length?Math.min(...nums):null};
+  });
+  const nDiff=rows.filter(x=>x.diff>=2).length;
+  rows.sort((x,y)=>((y.diff>=2)-(x.diff>=2))||(x.i-y.i));
+  const val=r=>!r?"—":(r.cls==="N/A"?"N/A":(r.score==null?"—":String(r.score)));
+  const tagCls=r=>(!r||r.score==null)?"":(r.score===2?"t2":r.score===1?"t1":"t0");
+  const head=`<tr><th class="center">#</th><th>Câu hỏi</th>${per.map(x=>`<th class="center">${esc(x.name)}</th>`).join("")}<th class="center">Thấp nhất</th></tr>`;
+  const body=rows.map(x=>`<tr${x.diff>=2?' style="background:#fef3c7"':''}><td class="center">${x.i+1}</td>
+    <td>${esc(x.it.req)}<div class="muted" style="font-size:11px">${esc(x.it.cat)}</div></td>
+    ${x.rs.map(r=>`<td class="center"><span class="tag ${tagCls(r)}">${val(r)}</span>${r&&r.finding?`<div class="muted" style="font-size:10.5px;max-width:170px" title="${esc(r.finding)}">${esc(r.finding.length>55?r.finding.slice(0,55)+"…":r.finding)}</div>`:""}</td>`).join("")}
+    <td class="center"><b>${x.low==null?"—":x.low}</b>${x.diff>=2?" ⚠️":""}</td></tr>`).join("");
+  return `<details style="margin-top:8px"${nDiff?" open":""}><summary style="cursor:pointer;font-weight:700">🔍 So sánh từng câu giữa ${per.length} người${nDiff?` — <span style="color:#b45309">${nDiff} câu lệch ≥2 điểm cần xem lại</span>`:" — không có câu nào lệch ≥2 điểm"}</summary>
+    <div style="overflow:auto;max-height:360px;margin-top:6px"><table class="data">${head}${body}</table></div></details>`;
 }
 /* Tổng hợp nhiều Auditor cùng chấm 1 khu vực: mỗi câu lấy ĐIỂM THẤP NHẤT trong các bài đã gửi,
    gộp TẤT CẢ Phát hiện/Bằng chứng (khử trùng lặp, ghi rõ tên người ghi khi có >1 người) và toàn bộ ảnh. */
@@ -2627,10 +2781,11 @@ async function mergeCandidates(code){
     const rs=perCand.map(p=>({name:p.name,r:p.by[key]})).filter(x=>x.r);
     const scores=rs.map(x=>x.r.score).filter(s=>s!=null);
     const score=scores.length?Math.min(...scores):null;
+    const allNA=!scores.length&&rs.length&&rs.every(x=>x.r.cls==="N/A");
     if(scores.length&&Math.max(...scores)!==score)lowered++;
     const images=[];rs.forEach(x=>(x.r.images||[]).forEach(im=>images.push(im)));
     await dbPut({id:canonBatch+"|"+i,batch:canonBatch,period,code,full:a.full,submitterKey:null,
-      date:todayISO(),auditor:names.join(", "),cat:it.cat,req:it.req,score,cls:clsOf(score),
+      date:todayISO(),auditor:names.join(", "),cat:it.cat,req:it.req,score,cls:clsOf(score,allNA),
       finding:join(rs.map(x=>({name:x.name,text:x.r.finding}))),
       evidence:join(rs.map(x=>({name:x.name,text:x.r.evidence}))),images});}
   await reloadRecords();
@@ -2756,6 +2911,7 @@ function renderTabOrderSettings(){const el=$("#tabOrderList");if(!el)return;cons
   $$("#tabOrderList [data-tabdown]").forEach(b=>b.onclick=()=>moveTab(b.dataset.tabdown,1));}
 function moveTab(code,dir){const o=currentTabOrder();const i=o.indexOf(code);const j=i+dir;if(j<0||j>=o.length)return;const t=o[i];o[i]=o[j];o[j]=t;SET.tabOrder=o;saveSettings();applyTabOrder();renderTabOrderSettings();}
 async function boot(){
+  setInterval(()=>autosaveDraft().catch(()=>{}),45000);
   $("#inDate").value=todayISO();
   await openDB();await seedIfEmpty();installSyncWraps();await migrateToPeriods();
   if(SET.defaultAuditor&&!$("#inAuditor").value)$("#inAuditor").value=SET.defaultAuditor;
