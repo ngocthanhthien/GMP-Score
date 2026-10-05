@@ -401,6 +401,33 @@ begin
 end; $$;
 
 -- ============================================================================
+-- RPC: Admin ÉP MỞ LẠI kỳ/Function đã chốt (Force reopen) — chỉ Admin, có ghi nhật ký
+-- ============================================================================
+create or replace function public.gmp_reopen_function(p_period text, p_code text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.gmp_is_admin() then raise exception 'Chỉ Admin được mở lại'; end if;
+  -- Function đã khoá -> trở về "Đã gửi" (Admin sửa được rồi Chốt lại); chỉ đụng dòng CHÍNH THỨC
+  update public.gmp_submissions set status='SUBMITTED', locked_at=null, locked_by=null, updated_at=now()
+  where id=p_period||'|'||p_code and submitter_key is null and status='LOCKED';
+  -- Kỳ đang "Đã chốt" thì mở lại, nếu không gmp_save_record vẫn từ chối mọi lần ghi
+  update public.gmp_periods set status='Đang chấm', closed_at=null, closed_by=null where id=p_period and status='Đã chốt';
+  insert into public.gmp_audit_log(actor,actor_name,action,detail)
+  values(auth.uid(), public.gmp_display_name(), 'reopen_function', jsonb_build_object('period',p_period,'code',p_code));
+end; $$;
+
+create or replace function public.gmp_reopen_period(p_period text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.gmp_is_admin() then raise exception 'Chỉ Admin được mở lại'; end if;
+  update public.gmp_submissions set status='SUBMITTED', locked_at=null, locked_by=null, updated_at=now()
+  where period=p_period and submitter_key is null and status='LOCKED';
+  update public.gmp_periods set status='Đang chấm', closed_at=null, closed_by=null where id=p_period and status='Đã chốt';
+  insert into public.gmp_audit_log(actor,actor_name,action,detail)
+  values(auth.uid(), public.gmp_display_name(), 'reopen_period', jsonb_build_object('period',p_period));
+end; $$;
+
+-- ============================================================================
 -- RPC: dọn dữ liệu chấm cá nhân đã dùng xong (Admin bấm thủ công, KHÔNG tự động)
 -- Chỉ xoá bài cá nhân của các Function ĐÃ LOCKED (đã có kết quả chính thức) —
 -- Function chưa chốt vẫn giữ nguyên toàn bộ bài cá nhân của các Auditor.

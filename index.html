@@ -418,6 +418,7 @@ table.data tbody tr:hover td{background:#faf7f2}
         <button class="btn" id="lockPeriodBtn">🔒 Chốt toàn bộ kỳ</button>
         <button class="btn gray" id="createPeriodBtn">➕ Tạo kỳ mới</button>
         <button class="btn red" id="resetPeriodBtn">♻️ Reset kỳ đang chấm</button>
+        <button class="btn amber" id="reopenPeriodBtn" title="Admin: ép mở lại kỳ/Function đã chốt để chấm và sửa tiếp">🔓 Mở lại kỳ đã chốt (Force)</button>
         <button class="btn gray" id="purgeCandidatesBtn">🗑️ Dọn dữ liệu chấm cá nhân</button>
         <div class="hint" style="margin:0;flex:1;min-width:220px">"Chốt toàn bộ kỳ" cần mọi Function đã <b>Gửi kết quả</b>. "Tạo kỳ mới" chỉ bật khi kỳ hiện tại đã chốt — không xoá/copy dữ liệu. "Reset kỳ đang chấm" chỉ xoá dữ liệu của kỳ đang mở, các kỳ đã chốt không bị ảnh hưởng. "Dọn dữ liệu chấm cá nhân" xoá các bài chấm riêng lẻ của từng Auditor thuộc khu vực <b>đã Chốt</b> để tiết kiệm dung lượng — không đụng tới bản chính thức.</div>
       </div>
@@ -2214,7 +2215,7 @@ function updateCloudChip(){
 /* Thứ tự gửi bắt buộc: kỳ -> reset -> điểm (xoá/ghi) & cấu hình -> TRẠNG THÁI NỘP -> chốt kỳ -> dọn.
    Gửi song song không thứ tự từng khiến "Đã nộp" tới server trước điểm của chính nó => server từ chối
    điểm ("Đã nộp — chỉ Admin được sửa") và điểm đó mất vĩnh viễn. */
-const SYNC_PRIO={period_create:0,period_reset:1,record_del:2,record:3,capa:3,checklist:3,settings:3,auditors:3,submission:4,period_lock:5,purge_candidates:6};
+const SYNC_PRIO={period_create:0,period_reset:1,reopen_period:1,reopen_function:1,record_del:2,record:3,capa:3,checklist:3,settings:3,auditors:3,submission:4,period_lock:5,purge_candidates:6};
 // P0001 = luật nghiệp vụ trên server (đã nộp/đã khoá/không đủ quyền…), 42501 = RLS: thử lại vô ích -> bỏ khỏi hàng đợi + báo người dùng.
 function isPermanentSyncError(e){return !!e&&(e.code==="P0001"||e.code==="42501");}
 async function flushPending(){
@@ -2254,6 +2255,8 @@ async function pushOne(it){
   else if(it.kind==="record_del"){const {error}=await SB.rpc("gmp_delete_record",{p_id:p.id});if(error)throw error;}
   else if(it.kind==="period_create"){const {error}=await SB.rpc("gmp_create_period",{p_id:p.id,p_functions:p.functions});if(error)throw error;}
   else if(it.kind==="period_reset"){const {error}=await SB.rpc("gmp_reset_period",{p_period:p.period});if(error)throw error;}
+  else if(it.kind==="reopen_period"){const {error}=await SB.rpc("gmp_reopen_period",{p_period:p.period});if(error)throw error;}
+  else if(it.kind==="reopen_function"){const {error}=await SB.rpc("gmp_reopen_function",{p_period:p.period,p_code:p.code});if(error)throw error;}
   else if(it.kind==="period_lock"){const {error}=await SB.rpc("gmp_lock_whole_period",{p_period:p.period});if(error)throw error;}
   else if(it.kind==="submission"){const {error}=await SB.rpc("gmp_set_submission",{p_period:p.period,p_code:p.code,p_status:p.status,p_auditor:p.auditor||null,p_submitter_key:p.submitterKey||null,p_submitter_name:p.submitterName||null,p_final_submitter:p.finalSubmitter||null});if(error)throw error;}
   else if(it.kind==="capa"){const {error}=await SB.rpc("gmp_save_capa",{p_data:p});if(error)throw error;}
@@ -2350,6 +2353,8 @@ async function pullTables(tables,silent,force){
     const pend=await pendAll();
     const pendKeys=new Set(pend.map(p=>p.key));
     const resetPeriods=new Set(pend.filter(p=>p.kind==="period_reset").map(p=>p.id));
+    // kỳ Admin vừa "Mở lại" nhưng lệnh chưa lên server: bản server còn ghi "Đã chốt/LOCKED" là bản cũ — không để nó khoá lại
+    const reopenPeriods=new Set(pend.filter(p=>p.kind==="reopen_period"||p.kind==="reopen_function").map(p=>p.payload&&p.payload.period));
     // Bản ghi vừa sửa cục bộ SAU khi lượt pull này bắt đầu (kể cả đã gửi xong, hàng đợi đã trống) thì bản
     // server trong tay là bản cũ hơn — bỏ qua, bản cục bộ mới sẽ tự lên server và quay về ở lượt pull sau.
     const localNewer=(k)=>(localWriteAt.get(k)||0)>=pullStartedAt;
@@ -2363,11 +2368,11 @@ async function pullTables(tables,silent,force){
           for(const s of Object.values(SUBS).filter(x=>x.period===row.id)){if(!pendKeys.has(pendKey("submission",s.id))&&!localNewer("s:"+s.id))await subDel(s.id);}
           needFullRecs=true;
         }
-        if(!pendKeys.has(pendKey("period_create",row.id))&&!pendKeys.has(pendKey("period_lock",row.id)))await perPut(mapServerPeriod(row));
+        if(!pendKeys.has(pendKey("period_create",row.id))&&!pendKeys.has(pendKey("period_lock",row.id))&&!reopenPeriods.has(row.id))await perPut(mapServerPeriod(row));
       }
       await reloadPeriods();
     }
-    if(rs&&rs.data){for(const row of rs.data){if(resetPeriods.has(row.period))continue;if(!pendKeys.has(pendKey("submission",row.id))&&!localNewer("s:"+row.id))await subPut(mapServerSub(row));}await reloadSubs();}
+    if(rs&&rs.data){for(const row of rs.data){if(resetPeriods.has(row.period))continue;if(reopenPeriods.has(row.period)&&row.status==="LOCKED")continue;if(!pendKeys.has(pendKey("submission",row.id))&&!localNewer("s:"+row.id))await subPut(mapServerSub(row));}await reloadSubs();}
     if(rr&&rr.data){for(const row of rr.data){if(resetPeriods.has(row.period)||row.batch===SEED_BATCH)continue;/* dữ liệu mẫu SEED cũ còn trên server: không nạp vào app */if(!pendKeys.has(pendKey("record",row.id))&&!pendKeys.has(pendKey("record_del",row.id))&&!localNewer("r:"+row.id))await (dbPutLocal||dbPut)(mapServerRecord(row));}await reloadRecords();}
     if(rk&&rk.data&&rk.data.data&&!pendKeys.has(pendKey("checklist","current"))&&!chkDirty){CHK=rk.data.data;sortCHK();try{localStorage.setItem(LS_CHK,JSON.stringify(CHK));}catch(e){}fillAreaSelects();}
     if(rt&&rt.data&&rt.data.data&&!pendKeys.has(pendKey("settings","current"))){SET=Object.assign(defSettings(),rt.data.data);SET.egress=Object.assign(defEgress(),SET.egress||{});try{localStorage.setItem(LS_SET,JSON.stringify(SET));}catch(e){}applyTabOrder();}
@@ -2640,6 +2645,29 @@ async function lockFunction(code){
   await setSubStatus(code,pid,{status:"LOCKED",lockedAt:todayISO(),lockedBy:(CURRENT_USER&&CURRENT_USER.name)||"Admin"});
   renderApprove();maybeAutoPush();toast("Đã chốt "+code+" ✓");
 }
+/* Admin ÉP MỞ LẠI kỳ/Function đã chốt: Function LOCKED -> SUBMITTED (Admin sửa lại được rồi Chốt lại), kỳ "Đã chốt" -> "Đang chấm",
+   và đặt kỳ đó làm kỳ đang chấm. code=null: mở cả kỳ (mọi Function đã khoá); có code: chỉ Function đó (kỳ vẫn phải mở để ghi được).
+   Server kiểm tra quyền Admin (gmp_reopen_*) — ẩn nút ở client chỉ là tiện lợi. */
+async function forceReopen(pid,code){
+  if(!isAdmin()){toast("Chỉ Admin mới được mở lại");return;}
+  const per=PERIODS.find(p=>p.id===pid);
+  const lockedSubs=Object.values(SUBS).filter(x=>x.period===pid&&!x.submitterKey&&x.status==="LOCKED"&&(!code||x.code===code));
+  const periodClosed=!!(per&&per.status==="Đã chốt");
+  if(!lockedSubs.length&&!periodClosed){toast("Không có gì để mở lại — kỳ/Function này chưa bị chốt");return;}
+  const what=code?("Function "+code):("kỳ "+periodLabel(pid));
+  if(!confirm("⚠️ ÉP MỞ LẠI "+what+" đã chốt?\n\n• "+(lockedSubs.length?lockedSubs.length+" Function đang 🔒 Đã chốt sẽ chuyển về 📤 Đã gửi (Admin sửa được, rồi Chốt lại).\n• ":"")+(periodClosed?"Kỳ "+periodLabel(pid)+" chuyển từ Đã chốt về Đang chấm và trở thành kỳ đang chấm của TOÀN HỆ THỐNG.\n• ":"")+"Thao tác được ghi vào nhật ký Admin.\n\nTiếp tục?"))return;
+  for(const x of lockedSubs){
+    const next=Object.assign({},x,{status:"SUBMITTED",lockedAt:null,lockedBy:null});
+    localWriteAt.set("s:"+x.id,Date.now());await subPut(next);SUBS[x.id]=next;
+  }
+  if(periodClosed){await perPut(Object.assign({},per,{status:"Đang chấm",closedAt:null,closedBy:null}));}
+  if(SET.currentPeriod!==pid){SET.currentPeriod=pid;saveSettings();}
+  if(code)enqueueSync("reopen_function",pid+"|"+code,{period:pid,code});else enqueueSync("reopen_period",pid,{period:pid});
+  await reloadSubs();await reloadPeriods();
+  renderApprove();renderAll();if(typeof renderHistory==="function")renderHistory();
+  if($("#inArea")&&$("#inArea").value)loadAreaForm($("#inArea").value);
+  maybeAutoPush();toast("🔓 Đã mở lại "+what+" — sửa/chấm tiếp rồi Chốt lại khi xong");
+}
 async function lockWholePeriod(){
   if(!isAdmin()){toast("Chỉ Admin mới được chốt kỳ");return;}
   const pid=activePeriodId();const per=activePeriod();
@@ -2685,6 +2713,8 @@ function renderApprove(){
   if(npBtn)npBtn.disabled=!(per&&per.status==="Đã chốt");
   if(rsBtn)rsBtn.disabled=!(per&&per.status!=="Đã chốt");
   if(lkBtn)lkBtn.disabled=!(per&&per.status!=="Đã chốt");
+  const roBtn=$("#reopenPeriodBtn");
+  if(roBtn)roBtn.disabled=!((per&&per.status==="Đã chốt")||Object.values(SUBS).some(x=>x.period===pid&&!x.submitterKey&&x.status==="LOCKED"));
   const lbl=$("#apPeriodLabel");if(lbl)lbl.textContent=periodLabel(pid)+" — "+(per?per.status:"Đang chấm");
   const stMap={DRAFT:["📝 Nháp","t1"],SUBMITTED:["📤 Đã gửi","t1"],LOCKED:["🔒 Đã chốt","t2"]};
   let done=0,pend=0,draft=0,rows="";
@@ -2695,7 +2725,7 @@ function renderApprove(){
     if(sub.status==="LOCKED")done++;else if(sub.status==="SUBMITTED")pend++;else draft++;
     const act=admin?(
       sub.status==="SUBMITTED"?`<button class="btn sm" data-lock="${esc(a.code)}">🔒 Chốt</button> <button class="btn sm amber" data-apedit="${esc(a.code)}">✏️ Xem/Sửa</button>`
-      :sub.status==="LOCKED"?`<span class="muted" style="font-size:11.5px">${esc(sub.lockedBy||"")} · ${esc(sub.lockedAt||"")}</span>`
+      :sub.status==="LOCKED"?`<span class="muted" style="font-size:11.5px">${esc(sub.lockedBy||"")} · ${esc(sub.lockedAt||"")}</span> <button class="btn sm amber" data-reopen="${esc(a.code)}" title="Ép mở lại Function đã chốt">🔓 Mở lại</button>`
       :`<button class="btn sm amber" data-apedit="${esc(a.code)}">✏️ Xem</button>`
     ):"";
     const scoreCell=sc?`${sc.actual}/${sc.poss} <span class="tag ${rr[2]}">${(sc.pct*100).toFixed(0)}%</span>`:`<span class="muted" style="font-size:11.5px">chưa có bản chính thức</span>`;
@@ -2711,6 +2741,7 @@ function renderApprove(){
   const head=`<tr><th class="center">#</th><th>Khu vực / Function</th><th class="right">Điểm</th><th class="center">Trạng thái</th><th>Người đã chấm (điểm từng người)</th><th class="center">Thao tác</th></tr>`;
   $("#apTable").innerHTML=head+rows;
   $$('#apTable [data-lock]').forEach(b=>b.onclick=()=>lockFunction(b.dataset.lock));
+  $$('#apTable [data-reopen]').forEach(b=>b.onclick=()=>forceReopen(pid,b.dataset.reopen));
   $$('#apTable [data-apedit]').forEach(b=>b.onclick=()=>{const c=b.dataset.apedit;switchTab("input");$("#inArea").value=c;loadAreaForm(c);updateLive();toast("Đang mở khu "+c);});
   renderCandidateReview(pid,admin);
 }
@@ -2860,7 +2891,9 @@ function renderHistoryDetail(pid){
   if(dcard)dcard.style.display="none";
   if(!pid){info.textContent="";kpis.innerHTML="";table.innerHTML="";return;}
   const per=PERIODS.find(p=>p.id===pid);
-  info.innerHTML="<b>"+esc(periodLabel(pid))+"</b> — Đã chốt bởi <b>"+esc((per&&per.closedBy)||"—")+"</b> ngày <b>"+esc((per&&per.closedAt)||"—")+"</b>";
+  info.innerHTML="<b>"+esc(periodLabel(pid))+"</b> — Đã chốt bởi <b>"+esc((per&&per.closedBy)||"—")+"</b> ngày <b>"+esc((per&&per.closedAt)||"—")+"</b>"
+    +(isAdmin()?' <button class="btn sm amber" id="hisReopenBtn" style="margin-left:8px">🔓 Mở lại kỳ này (Force)</button>':"");
+  const hrb=$("#hisReopenBtn");if(hrb)hrb.onclick=()=>forceReopen(pid,null);
   let ta=0,tp=0,rows="";
   CHK.forEach((a,i)=>{
     const sc=areaScore(a.code,pid);
@@ -2954,6 +2987,7 @@ async function boot(){
   $("#resetPeriodBtn").onclick=resetActivePeriod;
   $("#purgeCandidatesBtn").onclick=purgeFinalizedCandidates;
   $("#lockPeriodBtn").onclick=lockWholePeriod;
+  $("#reopenPeriodBtn").onclick=()=>forceReopen(activePeriodId(),null);
   $("#capaArea").onchange=renderCAPA;$("#capaStatus").onchange=renderCAPA;
   $("#expCapaCsvBtn").onclick=exportCapaCsv;$("#expCapaXlsxBtn").onclick=exportCapaXlsx;
   document.addEventListener("keydown",onKey);
