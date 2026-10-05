@@ -23,8 +23,10 @@ create table if not exists public.gmp_periods (
   created_at timestamptz not null default now(),
   closed_at timestamptz,
   closed_by text, -- tên người chốt (hiển thị), không phải uuid
-  updated_at timestamptz not null default now() -- dùng cho delta-sync phía client, xem gmp_set_updated_at() bên dưới
+  updated_at timestamptz not null default now(), -- dùng cho delta-sync phía client, xem gmp_set_updated_at() bên dưới
+  reset_at timestamptz -- mốc Admin "Reset kỳ" gần nhất: các máy khác thấy mốc đổi thì xoá bản sao cục bộ của kỳ này
 );
+alter table public.gmp_periods add column if not exists reset_at timestamptz;
 create index if not exists gmp_periods_updated_at_idx on public.gmp_periods (updated_at);
 
 -- ===== 3. Trạng thái nộp bài của 1 Function trong 1 kỳ =====
@@ -368,6 +370,8 @@ begin
   end if;
   delete from public.gmp_records where period=p_period;
   delete from public.gmp_submissions where period=p_period;
+  insert into public.gmp_periods(id,functions,status,reset_at) values(p_period,'[]'::jsonb,'Đang chấm',now())
+  on conflict (id) do update set reset_at=now();
   insert into public.gmp_audit_log(actor,actor_name,action,detail)
   values(auth.uid(), public.gmp_display_name(), 'reset_period', jsonb_build_object('period',p_period));
 end; $$;
@@ -377,9 +381,11 @@ returns void language plpgsql security definer set search_path = public as $$
 declare v_functions jsonb; v_not_ready int;
 begin
   if not public.gmp_is_admin() then raise exception 'Chỉ Admin được chốt kỳ'; end if;
+  -- Kỳ có thể chưa tồn tại trên server (tạo cục bộ / tự tạo bởi gmp_set_submission với danh sách Function rỗng)
+  insert into public.gmp_periods(id,functions,status) values(p_period,'[]'::jsonb,'Đang chấm') on conflict (id) do nothing;
   select functions into v_functions from public.gmp_periods where id=p_period;
-  if v_functions is null then raise exception 'Kỳ không tồn tại'; end if;
 
+  -- Danh sách Function rỗng -> chỉ kiểm tra các Function đã có bản chính thức trên server (client đã kiểm tra đủ danh sách)
   select count(*) into v_not_ready
   from jsonb_array_elements_text(v_functions) code
   where coalesce((select status from public.gmp_submissions where id=p_period||'|'||code),'DRAFT') not in ('SUBMITTED','LOCKED');

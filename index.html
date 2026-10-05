@@ -767,6 +767,10 @@ function subClear(){return new Promise((res)=>{const o=tx("submissions","readwri
 function pendAll(){return new Promise((res)=>{const o=tx("pending","readonly").getAll();o.onsuccess=()=>res(o.result||[]);o.onerror=()=>res([]);});}
 function pendPut(item){return new Promise((res)=>{const o=tx("pending","readwrite").put(item);o.onsuccess=()=>res();o.onerror=()=>res();});}
 function pendDel(key){return new Promise((res)=>{const o=tx("pending","readwrite").delete(key);o.onsuccess=()=>res();o.onerror=()=>res();});}
+// Chỉ xoá khỏi hàng đợi nếu mục đó CHƯA bị ghi đè bởi lần sửa mới hơn trong lúc đang gửi (cùng key kind:id) —
+// nếu không, lần sửa mới nhất sẽ bị xoá nhầm và không bao giờ lên server.
+function pendDelIf(key,at){return new Promise((res)=>{const s=tx("pending","readwrite");const g=s.get(key);
+  g.onsuccess=()=>{const cur=g.result;if(cur&&cur.at===at)s.delete(key);res();};g.onerror=()=>res();});}
 
 let RECORDS=[];
 let PERIODS=[];
@@ -1947,7 +1951,7 @@ async function afterSignIn(session){
   if(error||!member||member.disabled){
     await SB.auth.signOut().catch(()=>{});
     $("#loginErr").textContent=(member&&member.disabled)?"Tài khoản đã bị vô hiệu hoá — liên hệ Admin.":"Tài khoản chưa được Admin cấp quyền truy cập.";
-    await ensureSession();await loadAuditorNames();await pullAll(true);startPoller();startRealtime();
+    await ensureSession();await loadAuditorNames();await pullAll(true);startPoller();startRealtime();flushPending().catch(()=>{});
     return;
   }
   MEMBER=member;
@@ -1955,7 +1959,7 @@ async function afterSignIn(session){
   $("#loginErr").textContent="";$("#loginPass").value="";
   setGate(false);closeLoginBox();applyUserUI();
   toast((CURRENT_USER.admin?"Admin — ":"")+"Xin chào "+CURRENT_USER.name+"!");
-  await pullAll(true);startPoller();startRealtime();renderAll();if($("#inArea")&&$("#inArea").value)loadAreaForm($("#inArea").value);
+  await pullAll(true);startPoller();startRealtime();flushPending().catch(()=>{});renderAll();if($("#inArea")&&$("#inArea").value)loadAreaForm($("#inArea").value);
 }
 async function doLogout(){
   const wasAdmin=!!(CURRENT_USER&&CURRENT_USER.admin);
@@ -1965,7 +1969,7 @@ async function doLogout(){
   applyUserUI();$("#loginUser").value="";$("#loginPass").value="";$("#loginUserCode").value="";
   setGate(true);
   toast("Đã đăng xuất");
-  if(wasAdmin){await ensureSession();await loadAuditorNames();await pullAll(true);startPoller();startRealtime();}
+  if(wasAdmin){await ensureSession();await loadAuditorNames();await pullAll(true);startPoller();startRealtime();flushPending().catch(()=>{});}
 }
 function isLoginBoxOpen(){const ov=$("#loginOverlay");return !!ov&&ov.style.display==="flex";}
 function openLoginBox(){const ov=$("#loginOverlay");if(!ov)return;renderAuditorSelect();ov.style.display="flex";const sel=$("#loginUserSelect");if(sel)sel.focus();}
@@ -2022,7 +2026,7 @@ async function initCloud(){
     $("#loginErr").textContent="";
     await loadAuditorNames();
   }
-  await pullAll(true);startPoller();startRealtime();
+  await pullAll(true);startPoller();startRealtime();flushPending().catch(()=>{});
   SB.auth.onAuthStateChange((event)=>{
     if(event==="SIGNED_OUT"){MEMBER=null;if(CURRENT_USER&&CURRENT_USER.admin){CURRENT_USER=null;setGate(true);}applyUserUI();}
   });
@@ -2036,7 +2040,7 @@ async function callAdminUsers(payload){
   return j;
 }
 let syncBusy=false,pollTimer=null,flushTimer=null;
-let dbPutLocal=null;
+let dbPutLocal=null,dbDelLocal=null,pendingSyncCount=0;
 const localWriteAt=new Map(); // "r:<recordId>" / "s:<subId>" -> thời điểm sửa cục bộ gần nhất (chống bản server cũ ghi đè)
 function pendKey(kind,id){return kind+":"+id;}
 async function enqueueSync(kind,id,payload){
@@ -2056,6 +2060,8 @@ function updateCloudChip(){
   else{b.textContent="Đã đồng bộ"+modeSuffix;c.classList.toggle("warn",mode==="protection");}
   const st=$("#syncStatus");
   pendAll().then(items=>{
+    pendingSyncCount=items.filter(it=>it.kind!=="media_upload").length;
+    if(pendingSyncCount&&navigator.onLine&&!syncBusy&&!/chờ gửi/.test(b.textContent))b.textContent+=" • ⏳ "+pendingSyncCount+" chờ gửi";
     const nMedia=items.filter(it=>it.kind==="media_upload").length;
     const mediaSuffix=nMedia?(" • 📷 "+nMedia+" pending"):"";
     if(st){
@@ -2067,23 +2073,41 @@ function updateCloudChip(){
     renderEgressCard(nMedia);
   });
 }
+/* Thứ tự gửi bắt buộc: kỳ -> reset -> điểm (xoá/ghi) & cấu hình -> TRẠNG THÁI NỘP -> chốt kỳ -> dọn.
+   Gửi song song không thứ tự từng khiến "Đã nộp" tới server trước điểm của chính nó => server từ chối
+   điểm ("Đã nộp — chỉ Admin được sửa") và điểm đó mất vĩnh viễn. */
+const SYNC_PRIO={period_create:0,period_reset:1,record_del:2,record:3,capa:3,checklist:3,settings:3,auditors:3,submission:4,period_lock:5,purge_candidates:6};
+// P0001 = luật nghiệp vụ trên server (đã nộp/đã khoá/không đủ quyền…), 42501 = RLS: thử lại vô ích -> bỏ khỏi hàng đợi + báo người dùng.
+function isPermanentSyncError(e){return !!e&&(e.code==="P0001"||e.code==="42501");}
 async function flushPending(){
-  if(!sbConfigured()||!SESSION_READY||syncBusy)return;
+  if(!sbConfigured()||!SESSION_READY)return;
+  if(syncBusy){scheduleFlush();return;} // đang kéo dữ liệu: đợi rồi gửi, không bỏ rơi thay đổi vừa lưu
   syncBusy=true;updateCloudChip();
+  const rejected=[];
   try{
     // kind "media_upload" KHÔNG đi qua vòng này — vòng này chạy liên tục (debounce 1.5s) nên
     // không được đụng Storage ở đây, đặc biệt lúc 🔴 Protection. Xem resumePendingMediaUploads().
     const items=(await pendAll()).filter(it=>it.kind!=="media_upload");
-    // Gửi song song theo lô nhỏ thay vì tuần tự từng item — giảm độ trễ khi có nhiều thay đổi
-    // chờ gửi (VD sau khi offline lâu), không đổi số byte truyền đi, không đổi luật giữ-lại-khi-lỗi.
-    const CH_SIZE=5;
-    for(let i=0;i<items.length;i+=CH_SIZE){
-      await Promise.all(items.slice(i,i+CH_SIZE).map(it=>
-        pushOne(it).then(()=>pendDel(it.key))
-          .catch(()=>{/* giữ trong hàng đợi — lỗi mạng sẽ tự thử lại, lỗi quyền/khoá cần người dùng kiểm tra lại thao tác */})
-      ));
+    const prios=[...new Set(items.map(it=>SYNC_PRIO[it.kind]??3))].sort((a,b)=>a-b);
+    const CH_SIZE=5;let blocked=false;
+    for(const g of prios){
+      if(blocked)break; // nhóm trước còn lỗi tạm (mạng…): chưa gửi nhóm sau (vd chưa nộp bài khi điểm chưa lên server)
+      const grp=items.filter(it=>(SYNC_PRIO[it.kind]??3)===g);
+      for(let i=0;i<grp.length;i+=CH_SIZE){
+        await Promise.all(grp.slice(i,i+CH_SIZE).map(async it=>{
+          try{await pushOne(it);await pendDelIf(it.key,it.at);}
+          catch(e){
+            if(isPermanentSyncError(e)){await pendDelIf(it.key,it.at);rejected.push((e&&e.message)||"bị từ chối");}
+            else blocked=true; // lỗi mạng/tạm thời: giữ trong hàng đợi, tự thử lại ở lượt sau
+          }
+        }));
+      }
     }
   }finally{syncBusy=false;updateCloudChip();}
+  if(rejected.length){
+    toast("⚠️ Máy chủ từ chối "+rejected.length+" thay đổi: "+rejected[0]+" — đang tải lại bản đúng từ máy chủ.");
+    setTimeout(()=>pullTables(["gmp_records","gmp_submissions"],true,true).catch(()=>{}),600);
+  }
 }
 async function pushOne(it){
   const p=it.payload;
@@ -2100,8 +2124,11 @@ async function pushOne(it){
   else if(it.kind==="auditors"){const {error}=await SB.rpc("gmp_save_auditors",{p_data:p});if(error)throw error;}
   else if(it.kind==="purge_candidates"){const {error}=await SB.rpc("gmp_purge_finalized_candidates",{p_period:p.period});if(error)throw error;}
 }
-function mapServerRecord(r){return {id:r.id,batch:r.batch,period:r.period,date:r.date,auditor:r.auditor,code:r.code,full:r.full_name,cat:r.cat,req:r.req,score:r.score,cls:r.cls,finding:r.finding,evidence:r.evidence,images:r.images||[],submitterKey:r.submitter_key||null};}
-function mapServerPeriod(r){return {id:r.id,functions:r.functions||[],status:r.status,createdAt:r.created_at,closedAt:r.closed_at,closedBy:r.closed_by};}
+/* gmp_records KHÔNG có cột submitter_key — bài cá nhân nhận diện qua batch "kỳ|mã|submitterKey". Nếu không suy ra lại
+   ở đây, mọi bài cá nhân kéo từ server về bị coi là bản CHÍNH THỨC (thắng bản chính thức vì batch dài hơn). */
+function submitterKeyFromBatch(r){const pre=(r.period||"")+"|"+(r.code||"")+"|";const b=r.batch||"";return b.startsWith(pre)&&b.length>pre.length?b.slice(pre.length):null;}
+function mapServerRecord(r){return {id:r.id,batch:r.batch,period:r.period,date:r.date,auditor:r.auditor,code:r.code,full:r.full_name,cat:r.cat,req:r.req,score:r.score,cls:r.cls,finding:r.finding,evidence:r.evidence,images:r.images||[],submitterKey:submitterKeyFromBatch(r)};}
+function mapServerPeriod(r){return {id:r.id,functions:r.functions||[],status:r.status,createdAt:r.created_at,closedAt:r.closed_at,closedBy:r.closed_by,resetAt:r.reset_at||null};}
 function mapServerSub(r){return {id:r.id,period:r.period,code:r.code,status:r.status,auditor:r.auditor,submitterKey:r.submitter_key||null,submitterName:r.submitter_name||null,finalSubmitter:r.final_submitter||null,updatedAt:r.updated_at,submittedAt:r.submitted_at,submittedBy:r.submitted_by,lockedAt:r.locked_at,lockedBy:r.locked_by};}
 const ALL_SYNC_TABLES=["gmp_periods","gmp_submissions","gmp_records","gmp_capa","gmp_checklist","gmp_settings","gmp_auditors"];
 /* Delta sync: chỉ áp dụng cho bảng nhiều-dòng có cột updated_at (gmp_submissions đã có sẵn;
@@ -2125,17 +2152,35 @@ function isMissingUpdatedAtError(err){
   if(err.code==="42703")return true;
   return /column .*updated_at.* does not exist/i.test(err.message||"");
 }
+/* PostgREST mặc định chỉ trả TỐI ĐA 1000 dòng/lượt — không phân trang thì máy chỉ thấy 1000 dòng đầu của
+   bảng (project thật đã có >3900 dòng điểm), phần còn lại "biến mất" khỏi app. Lặp theo trang 1000 dòng,
+   sắp theo khoá ổn định để không sót/trùng giữa các trang. */
+const PAGE_SIZE=1000;
+async function selectAllPages(table,build,orderCols){
+  let all=[];
+  for(let from=0;;from+=PAGE_SIZE){
+    let q=build(SB.from(table).select("*"));
+    orderCols.forEach(c=>{q=q.order(c,{ascending:true});});
+    const r=await q.range(from,from+PAGE_SIZE-1);
+    if(r.error)return {data:null,error:r.error};
+    all=all.concat(r.data||[]);
+    if(!r.data||r.data.length<PAGE_SIZE)break;
+  }
+  return {data:all,error:null};
+}
 async function fetchTableRows(table,force){
   if(!force&&DELTA_TABLES.has(table)&&!deltaUnsupported.has(table)){
     const since=getSyncCursor(table);
     if(since){
-      const r=await SB.from(table).select("*").gt("updated_at",since).order("updated_at",{ascending:true});
+      // lùi 2 giây: giao dịch commit trễ có updated_at nhỏ hơn mốc đã lưu vẫn không bị sót (dư vài dòng, rẻ)
+      let from=since;try{from=new Date(new Date(since).getTime()-2000).toISOString();}catch(e){}
+      const r=await selectAllPages(table,q=>q.gt("updated_at",from),["updated_at","id"]);
       if(!r.error){bumpCursorFromRows(table,r.data);addTraffic(JSON.stringify(r.data||[]).length);return r;}
       if(isMissingUpdatedAtError(r.error))deltaUnsupported.add(table);
       // lỗi khác (mạng/RLS…) -> thử lại bằng full-select bên dưới, không đánh dấu unsupported
     }
   }
-  const r=await SB.from(table).select("*");
+  const r=await selectAllPages(table,q=>q,["id"]);
   if(!r.error){bumpCursorFromRows(table,r.data);addTraffic(JSON.stringify(r.data||[]).length);}
   return r;
 }
@@ -2170,7 +2215,20 @@ async function pullTables(tables,silent,force){
     // Bản ghi vừa sửa cục bộ SAU khi lượt pull này bắt đầu (kể cả đã gửi xong, hàng đợi đã trống) thì bản
     // server trong tay là bản cũ hơn — bỏ qua, bản cục bộ mới sẽ tự lên server và quay về ở lượt pull sau.
     const localNewer=(k)=>(localWriteAt.get(k)||0)>=pullStartedAt;
-    if(rp&&rp.data){for(const row of rp.data){if(!pendKeys.has(pendKey("period_create",row.id))&&!pendKeys.has(pendKey("period_lock",row.id)))await perPut(mapServerPeriod(row));}await reloadPeriods();}
+    let needFullRecs=false;
+    if(rp&&rp.data){
+      for(const row of rp.data){
+        // Admin ở máy khác vừa "Reset kỳ": bản sao cục bộ của kỳ này đã cũ — xoá (trừ thay đổi đang chờ gửi) rồi kéo lại từ server.
+        const loc=PERIODS.find(p=>p.id===row.id);
+        if(row.reset_at&&(!loc||loc.resetAt!==row.reset_at)&&!resetPeriods.has(row.id)){
+          for(const r of RECORDS.filter(x=>x.period===row.id)){if(!pendKeys.has(pendKey("record",r.id))&&!localNewer("r:"+r.id))await (dbDelLocal||dbDel)(r.id);}
+          for(const s of Object.values(SUBS).filter(x=>x.period===row.id)){if(!pendKeys.has(pendKey("submission",s.id))&&!localNewer("s:"+s.id))await subDel(s.id);}
+          needFullRecs=true;
+        }
+        if(!pendKeys.has(pendKey("period_create",row.id))&&!pendKeys.has(pendKey("period_lock",row.id)))await perPut(mapServerPeriod(row));
+      }
+      await reloadPeriods();
+    }
     if(rs&&rs.data){for(const row of rs.data){if(resetPeriods.has(row.period))continue;if(!pendKeys.has(pendKey("submission",row.id))&&!localNewer("s:"+row.id))await subPut(mapServerSub(row));}await reloadSubs();}
     if(rr&&rr.data){for(const row of rr.data){if(resetPeriods.has(row.period))continue;if(!pendKeys.has(pendKey("record",row.id))&&!pendKeys.has(pendKey("record_del",row.id))&&!localNewer("r:"+row.id))await (dbPutLocal||dbPut)(mapServerRecord(row));}await reloadRecords();}
     if(rk&&rk.data&&rk.data.data&&!pendKeys.has(pendKey("checklist","current"))&&!chkDirty){CHK=rk.data.data;sortCHK();try{localStorage.setItem(LS_CHK,JSON.stringify(CHK));}catch(e){}fillAreaSelects();}
@@ -2178,6 +2236,7 @@ async function pullTables(tables,silent,force){
     if(rc&&rc.data&&!pendKeys.has(pendKey("capa","current"))){CAPA=rc.data.data||{};try{localStorage.setItem(LS_CAPA,JSON.stringify(CAPA));}catch(e){}}
     if(ra&&ra.data&&!pendKeys.has(pendKey("auditors","current"))){AUDITORS=ra.data.data||[];try{localStorage.setItem(LS_AUD,JSON.stringify(AUDITORS));}catch(e){}renderAuditorsAdmin();}
     renderAll();refreshAreaFormIfClean();
+    if(needFullRecs)setTimeout(()=>pullTables(["gmp_records","gmp_submissions"],true,true).catch(()=>{}),300);
     if(!silent)toast("🔄 Đã đồng bộ với máy chủ");
   }catch(e){if(!silent)toast("Lỗi đồng bộ: "+(e.message||e));}
   finally{syncBusy=false;updateCloudChip();}
@@ -2187,6 +2246,7 @@ let pollTick=0;
 function startPoller(){
   clearInterval(pollTimer);pollTick=0;
   pollTimer=setInterval(()=>{
+    flushPending().catch(()=>{}); // thay đổi còn kẹt trong hàng đợi (lỗi mạng cũ…) tự gửi lại — không tốn mạng nếu hàng đợi rỗng
     if(document.hidden)return; // tab nền: không tốn egress cho tới khi người dùng quay lại
     if(dirtyEval||syncBusy||!navigator.onLine)return;
     pollTick++;
@@ -2261,13 +2321,14 @@ window.addEventListener("online",()=>{updateCloudChip();flushPending();});
 window.addEventListener("offline",updateCloudChip);
 function installSyncWraps(){
   const _dbPut=dbPut,_dbDel=dbDel,_saveCapa=saveCapa,_saveChk=saveChk,_saveSettings=saveSettings,_saveAuditors=saveAuditors;
+  dbDelLocal=_dbDel;
   dbPutLocal=_dbPut; // ghi chỉ cục bộ, KHÔNG xếp hàng đẩy lên server — dùng cho dữ liệu vừa kéo từ server về
-  dbPut=function(rec){localWriteAt.set("r:"+rec.id,Date.now());const p=_dbPut(rec);if(SESSION_READY)enqueueSync("record",rec.id,rec);return p;};
-  dbDel=function(id){localWriteAt.set("r:"+id,Date.now());const p=_dbDel(id);if(SESSION_READY)enqueueSync("record_del",id,{id});return p;};
-  saveCapa=function(){_saveCapa();if(SESSION_READY)enqueueSync("capa","current",CAPA);};
-  saveChk=function(){_saveChk();if(SESSION_READY&&isAdmin())enqueueSync("checklist","current",CHK);};
-  saveSettings=function(){_saveSettings();if(SESSION_READY&&isAdmin())enqueueSync("settings","current",SET);};
-  saveAuditors=function(){_saveAuditors();if(SESSION_READY&&isAdmin())enqueueSync("auditors","current",AUDITORS);};
+  dbPut=function(rec){localWriteAt.set("r:"+rec.id,Date.now());const p=_dbPut(rec);if(sbConfigured())enqueueSync("record",rec.id,rec);return p;};
+  dbDel=function(id){localWriteAt.set("r:"+id,Date.now());const p=_dbDel(id);if(sbConfigured())enqueueSync("record_del",id,{id});return p;};
+  saveCapa=function(){_saveCapa();if(sbConfigured())enqueueSync("capa","current",CAPA);};
+  saveChk=function(){_saveChk();if(sbConfigured()&&isAdmin())enqueueSync("checklist","current",CHK);};
+  saveSettings=function(){_saveSettings();if(sbConfigured()&&isAdmin())enqueueSync("settings","current",SET);};
+  saveAuditors=function(){_saveAuditors();if(sbConfigured()&&isAdmin())enqueueSync("auditors","current",AUDITORS);};
 }
 
 /* ===== Data & Egress Control: Admin đặt Soft/Hard limit (mặc định 100/200 MB), app tự
@@ -2365,7 +2426,7 @@ async function setSubStatus(code,period,patch,submitterKey,submitterName){
   const next=Object.assign({},cur,patch);if(submitterName)next.submitterName=submitterName;
   localWriteAt.set("s:"+key,Date.now());
   await subPut(next);SUBS[key]=next;
-  if(SESSION_READY)enqueueSync("submission",key,{period,code,status:next.status,auditor:next.auditor||null,
+  if(sbConfigured())enqueueSync("submission",key,{period,code,status:next.status,auditor:next.auditor||null,
     submitterKey:submitterKey||null,submitterName:next.submitterName||null,finalSubmitter:next.finalSubmitter||null});
   return next;
 }
@@ -2401,7 +2462,7 @@ async function createNewPeriod(){
   if(!confirm("Tạo kỳ chấm điểm mới: "+periodLabel(nid)+"?\n\nDữ liệu các kỳ trước vẫn được giữ nguyên, không bị xoá hay copy sang.\n\nTiếp tục?"))return;
   let exist=PERIODS.find(p=>p.id===nid);
   if(!exist){exist={id:nid,functions:CHK.map(a=>a.code),status:"Đang chấm",createdAt:todayISO(),closedAt:null,closedBy:null};await perPut(exist);PERIODS.push(exist);
-    if(SESSION_READY)enqueueSync("period_create",nid,{id:nid,functions:exist.functions});}
+    if(sbConfigured())enqueueSync("period_create",nid,{id:nid,functions:exist.functions});}
   SET.currentPeriod=nid;saveSettings();
   await reloadSubs();
   renderAll();if($("#inArea").value)loadAreaForm($("#inArea").value);
@@ -2420,7 +2481,7 @@ async function resetActivePeriod(){
   const prefix=pid+"||";
   Object.keys(CAPA).forEach(k=>{if(k.startsWith(prefix))delete CAPA[k];});
   saveCapa();
-  if(SESSION_READY)enqueueSync("period_reset",pid,{period:pid});
+  if(sbConfigured())enqueueSync("period_reset",pid,{period:pid});
   await reloadRecords();await reloadSubs();
   renderAll();if($("#inArea").value)loadAreaForm($("#inArea").value);
   toast("♻️ Đã reset kỳ "+periodLabel(pid));
@@ -2445,7 +2506,7 @@ async function lockWholePeriod(){
   for(const a of CHK){const s=subOf(a.code,pid);if(s.status==="SUBMITTED")await setSubStatus(a.code,pid,{status:"LOCKED",lockedAt:todayISO(),lockedBy:(CURRENT_USER&&CURRENT_USER.name)||"Admin"});}
   const rec=Object.assign({},per||{id:pid,functions:CHK.map(a=>a.code),createdAt:todayISO()},{status:"Đã chốt",closedAt:todayISO(),closedBy:(CURRENT_USER&&CURRENT_USER.name)||"Admin"});
   await perPut(rec);await reloadPeriods();
-  if(SESSION_READY)enqueueSync("period_lock",pid,{period:pid});
+  if(sbConfigured())enqueueSync("period_lock",pid,{period:pid});
   renderApprove();renderAll();maybeAutoPush();
   toast("🔒 Đã chốt toàn bộ kỳ "+periodLabel(pid)+" ✓");
 }
@@ -2609,7 +2670,7 @@ async function purgeFinalizedCandidates(){
   if(!confirm("Xoá TOÀN BỘ bài chấm cá nhân (không phải bản chính thức) của "+lockedCodes.length+" khu vực đã Chốt trong kỳ "+periodLabel(pid)+" ("+toDelRecs.length+" dòng điểm)?\n\nBản chính thức đã Chốt KHÔNG bị ảnh hưởng. Không thể hoàn tác.\n\nTiếp tục?"))return;
   for(const r of toDelRecs)await dbDel(r.id);
   for(const s of toDelSubs){delete SUBS[s.id];await subDel(s.id);}
-  if(SESSION_READY)enqueueSync("purge_candidates",pid,{period:pid});
+  if(sbConfigured())enqueueSync("purge_candidates",pid,{period:pid});
   await reloadRecords();
   renderApprove();renderAll();
   toast("🗑️ Đã dọn "+toDelRecs.length+" dòng dữ liệu chấm cá nhân");
@@ -2726,7 +2787,7 @@ async function boot(){
   $("#expCapaCsvBtn").onclick=exportCapaCsv;$("#expCapaXlsxBtn").onclick=exportCapaXlsx;
   document.addEventListener("keydown",onKey);
   document.addEventListener("paste",onPaste);
-  window.addEventListener("beforeunload",e=>{if(dirtyEval||chkDirty){e.preventDefault();e.returnValue="";}});
+  window.addEventListener("beforeunload",e=>{if(dirtyEval||chkDirty||pendingSyncCount>0){e.preventDefault();e.returnValue="";}});
   const pb=$("#printBtn");if(pb)pb.onclick=()=>window.print();
   $("#syncNowBtn").onclick=()=>doSync(false);
   restoreMediaDir();
