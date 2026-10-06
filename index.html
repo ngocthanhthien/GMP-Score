@@ -829,10 +829,21 @@ function recordsForPeriodArea(period,code){
   // theo thứ tự chuỗi (tránh vô tình "thắng" bản chính thức qua so sánh chuỗi).
   const recs=RECORDS.filter(r=>r.code===code&&(r.period||inferPeriod(r.date))===period&&!r.submitterKey);
   if(!recs.length)return [];
-  let best=null;recs.forEach(r=>{if(best===null||r.batch>best)best=r.batch;});return recs.filter(r=>r.batch===best);
+  let best=null;recs.forEach(r=>{if(best===null||r.batch>best)best=r.batch;});return dedupeLegacy(recs.filter(r=>r.batch===best));
+}
+/* Dữ liệu cũ do bản app lỗi ghi ra có thể có 2 dòng cho cùng 1 câu trong cùng batch với id khác dạng (VD "kỳ|mã|mã|3" cạnh "kỳ|mã|3").
+   Dòng cũ nằm sau trong thứ tự id nên ĐÈ giá trị Admin vừa sửa khi nạp form, và điểm bị nhân đôi. Quy ước: trong 1 batch, id chuẩn
+   là "<batch>|<số thứ tự>"; nếu câu đó đã có dòng id chuẩn thì bỏ các dòng id lạ trùng câu. Câu chỉ có dòng id lạ (dữ liệu cũ
+   thật, không có bản chuẩn) vẫn giữ nguyên. */
+function isCanonId(r){const b=r.batch+"|";return typeof r.id==="string"&&r.id.startsWith(b)&&/^\d+$/.test(r.id.slice(b.length));}
+function dedupeLegacy(recs){
+  if(!recs||recs.length<2)return recs;
+  const has=new Set();recs.forEach(r=>{if(isCanonId(r))has.add((r.cat||"")+"||"+(r.req||""));});
+  if(!has.size)return recs;
+  return recs.filter(r=>isCanonId(r)||!has.has((r.cat||"")+"||"+(r.req||"")));
 }
 function latestByArea(code,period){return recordsForPeriodArea(period||activePeriodId(),code);}
-function recordsForBatch(batch){return RECORDS.filter(r=>r.batch===batch);}
+function recordsForBatch(batch){return dedupeLegacy(RECORDS.filter(r=>r.batch===batch));}
 function scoreForRecords(recs){if(!recs||!recs.length)return null;
   // Chỉ tính câu ĐÃ CHẤM 0/1/2: câu N/A (score=null, cls="N/A") và câu chưa chấm không vào mẫu số.
   const scored=recs.filter(r=>r.score!=null);if(!scored.length)return null;
@@ -1308,6 +1319,13 @@ async function writeCurrentRows(statusOverride){
     // N/A lưu dạng score=null + cls="N/A" (cột score trên server chỉ nhận 0/1/2); chưa chấm = score=null + cls="".
     await dbPut({id:batch+"|"+i,batch,date,auditor,code,full:a.full,period,submitterKey,
       cat:r.cat,req:r.req,score:r.na?null:r.score,cls:clsOf(r.score,r.na),finding:r.finding||"",evidence:r.evidence||"",images:(r.images||[])});}
+  // Dọn dòng thừa trong CHÍNH batch này (id lạ do bản cũ, hoặc chỉ số vượt số câu hiện tại do checklist đã rút ngắn) — nếu để lại
+  // chúng sẽ đè giá trị vừa lưu khi nạp lại và làm sai điểm.
+  const nRows=CURRENT.rows.length;
+  for(const o of RECORDS.filter(r=>r.batch===batch)){
+    const tail=o.id.startsWith(batch+"|")?o.id.slice(batch.length+1):null;
+    if(!(tail!==null&&/^\d+$/.test(tail)&&+tail<nRows))await dbDel(o.id);
+  }
   await reloadRecords();await writeFile();
   const patch={auditor,updatedAt:new Date().toISOString(),status:finalStatus};
   if(finalStatus==="SUBMITTED"&&curStatus!=="SUBMITTED"){patch.submittedAt=todayISO();patch.submittedBy=auditor;}
